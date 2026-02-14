@@ -1,0 +1,39 @@
+[Unit]
+Description=Brain Slack Bot - Multi-turn AI conversation agent
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=earchibald
+Group=earchibald
+WorkingDirectory=/home/earchibald/agents
+Environment="PATH=/home/earchibald/agents/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+
+# Main service command - wrapper script decrypts secrets and starts bot
+ExecStart=/home/earchibald/agents/start_slack_bot.sh
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=300
+StartLimitBurst=5
+
+# Resource limits (optional - adjust based on system resources)
+MemoryLimit=2G
+CPUQuota=200%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=brain-slack-bot
+
+# Security hardening (optional - may need adjustment)
+# NoNewPrivileges=true
+# PrivateTmp=true
+# ProtectSystem=strict
+# ReadWritePaths=/home/earchibald/brain /home/earchibald/agents/logs
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,4 @@
+creation_rules:
+  - path_regex: secrets\.env$
+    # Your public key + the Agent's public key
+    age: "age18lwzll5usjy5tzu85fgq4sn6x3grs8xxrpkp9c7yn32gtsfeyqlqk4m67n,age109a3mk9sjptxjryhlmz8y9vtf09gt8prhfuwd3eq5mz9jsmfcfmsxh4rnc"
