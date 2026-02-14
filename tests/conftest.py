@@ -6,9 +6,14 @@ remote, e2e, red). Fixtures are designed to be async-aware and provide realistic
 mock data matching production structures.
 """
 
+import sys
+from pathlib import Path
+
+# Add parent directory to path so we can import agents and clients modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import pytest
 import asyncio
-from pathlib import Path
 import json
 import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch

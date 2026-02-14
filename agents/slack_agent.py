@@ -249,32 +249,36 @@ Be concise but thorough. If you don't know something, say so rather than making 
         
         # Calculate latency
         latency = (datetime.now() - start_time).total_seconds()
-        
-        # Save conversation
-        await self.conversations.save_message(
-            user_id=user_id,
-            thread_id=thread_id,
-            role="user",
-            content=text
-        )
-        
-        await self.conversations.save_message(
-            user_id=user_id,
-            thread_id=thread_id,
-            role="assistant",
-            content=response,
-            metadata={
-                "model": self.model,
-                "latency": latency,
-                "context_used": bool(context)
-            }
-        )
-        
+
+        # Save conversation (with error handling to ensure response is still sent)
+        try:
+            await self.conversations.save_message(
+                user_id=user_id,
+                thread_id=thread_id,
+                role="user",
+                content=text
+            )
+
+            await self.conversations.save_message(
+                user_id=user_id,
+                thread_id=thread_id,
+                role="assistant",
+                content=response,
+                metadata={
+                    "model": self.model,
+                    "latency": latency,
+                    "context_used": bool(context)
+                }
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to save conversation for {user_id}: {e}")
+            # Continue anyway - user still gets their response
+
         self.logger.info(
             f"Generated response for {user_id} in {latency:.2f}s "
             f"(history: {len(history)} msgs, context: {bool(context)})"
         )
-        
+
         return response
     
     async def run(self):
