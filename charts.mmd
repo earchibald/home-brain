@@ -1,0 +1,38 @@
+graph TD
+    subgraph "NUC-3: Storage Hub (192.168.1.197)"
+        SyncMaster[Syncthing Master Node]
+        Backup[Restic Backup]
+        FS_Master[Primary Brain Folder]
+        SyncMaster <--> FS_Master
+        Backup --> S3_Cloud[(Offsite S3)]
+    end
+
+    subgraph "NUC-1: Librarian (192.168.1.195)"
+        Khoj[Khoj App]
+        DB[(Postgres)]
+        FS_NUC1[Synced Brain Folder]
+        Khoj <--> DB
+        Khoj -- "Index" --> FS_NUC1
+        FS_NUC1 <--> SyncMaster
+    end
+
+    subgraph "NUC-2: Automation (192.168.1.196)"
+        Agents[Python Agents]
+        Scrapers[Web Scrapers]
+        FS_NUC2[Synced Brain Folder]
+        Agents -- "Read/Write" --> FS_NUC2
+        FS_NUC2 <--> SyncMaster
+    end
+
+    subgraph "Mac Mini (192.168.1.58)"
+        Ollama[Ollama API]
+        Llama[Llama 3.2]
+        Nomic[Nomic-Embed]
+        Ollama --> Llama
+        Ollama --> Nomic
+    end
+
+    Laptop[Laptop Client]
+    Laptop -- "Control" --> Khoj
+    Laptop <--> SyncMaster
+    Khoj -- "Inference" --> Ollama
