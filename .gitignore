@@ -1,0 +1,9 @@
+
+# Test and cache artifacts
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+logs/
+*.pyc
+.DS_Store
