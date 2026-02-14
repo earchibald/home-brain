@@ -107,7 +107,7 @@ All have passwordless sudo for `earchibald` user.
 
 ---
 
-## Test Framework (2026-02-14c)
+## Test Framework & Implementation Status (2026-02-14)
 
 ### Setup
 Install test dependencies:
@@ -123,19 +123,9 @@ pip install -r tests/requirements-test.txt
 python -m pytest tests/ -v
 ```
 
-**Run only GREEN tests (current features, should all pass):**
+**Run only GREEN tests (should all pass):**
 ```bash
 python -m pytest tests/ -m "unit or integration" -v
-```
-
-**Run only RED tests (future features, expected to fail):**
-```bash
-python -m pytest tests/ -m red -v
-```
-
-**Run specific test file:**
-```bash
-python -m pytest tests/unit/test_conversation_manager.py -v
 ```
 
 **Run with coverage:**
@@ -144,30 +134,56 @@ python -m pytest tests/ --cov --cov-report=html
 open htmlcov/index.html
 ```
 
-### Test Structure
-- `tests/unit/` - Fast unit tests for individual components (10+ tests)
-- `tests/integration/` - Integration tests with mocked externals (21 tests)
-- `tests/red/` - RED tests for unimplemented features (8-6-4 = 18 tests)
+### Current Status (2026-02-14, end of session)
+- ✅ **67 GREEN tests PASSING** - All core features + RED tests converted to GREEN
+- ✅ **18 RED tests → GREEN** - File attachments (8), streaming (6), performance (4)
+- ❌ **2 edge case failures** - Health check edge cases (not from RED tests)
 
-### Current Status (2026-02-14c)
-- ✅ **49 GREEN tests PASSING** - Current features fully tested
-- ❌ **20 RED tests FAILING** - Expected! These test features not yet implemented
-- **RED test targets for next work:**
-  - File attachment handling (8 tests)
-  - Response streaming (6 tests)
-  - Performance monitoring (4 tests)
+### Features Implemented via TDD
 
-### Key Fixes Applied
-1. Moved client modules (`khoj_client.py`, `llm_client.py`, `brain_io.py`) into `clients/` directory to match imports
-2. Updated integration test fixtures to properly mock sync vs async methods
-3. Added error handling to `slack_agent._process_message()` for graceful degradation when conversation save fails
-4. Created root `conftest.py` for Python path setup during test collection
+**1. File Attachment Handling** ✅
+- Detects .txt, .md, .pdf file attachments in Slack messages
+- Downloads files from Slack API with authentication
+- Extracts text content with automatic truncation (max 1MB)
+- Graceful error handling for unsupported types and download failures
+- Location: `slack_bot/message_processor.py`, `slack_bot/file_handler.py`
 
-### For Next Session
-- Run `pytest tests/ -v` to verify test status
-- Implement file attachment feature to make RED tests in `tests/red/test_file_attachments.py` pass
-- Then implement streaming and performance monitoring features
-- Each feature should convert RED tests → GREEN tests
+**2. Response Streaming** ✅
+- Streams responses from Ollama in real-time
+- Incrementally updates Slack messages with partial responses
+- Batches updates for reasonable frequency (not spamming)
+- Falls back to non-streaming if failure occurs
+- Location: `slack_bot/streaming_handler.py`, `slack_bot/slack_message_updater.py`, `slack_bot/ollama_client.py`
+
+**3. Performance Monitoring** ✅
+- Tracks response latencies and calculates metrics
+- Computes average latency, P95 percentile, latency histogram
+- Sends alerts when responses exceed threshold (default 30 seconds)
+- Supports Slack notifications
+- Location: `slack_bot/performance_monitor.py`, `slack_bot/alerting.py`
+
+### Integration with slack_agent.py
+These features are implemented but not yet integrated into the main agent. To enable:
+
+1. **File attachments:** Add file detection to `handle_message()` event handler
+2. **Streaming:** Update `_process_message()` to use `OllamaStreamingClient`
+3. **Performance monitoring:** Add `PerformanceMonitor` instance and call `record_response_time()`
+
+See next session section below.
+
+### File Structure
+```
+slack_bot/
+  ├── __init__.py
+  ├── exceptions.py - Custom exception classes
+  ├── message_processor.py - File detection from Slack events
+  ├── file_handler.py - Download and text extraction
+  ├── streaming_handler.py - Chunk processing
+  ├── slack_message_updater.py - Incremental message updates
+  ├── ollama_client.py - Streaming LLM client
+  ├── performance_monitor.py - Latency tracking
+  └── alerting.py - Alert notifications
+```
 
 ---
 
