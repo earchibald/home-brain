@@ -583,7 +583,30 @@ async def handle_message(event, say, client):
 
 ### Medium Priority
 
-#### 2. Test Multi-Turn Conversations
+#### 2. Add File Attachment Handling
+**Why:** Users may want to share files with the bot (text, documents, etc.)
+
+**Implementation:**
+- Detect `files` array in Slack message events
+- Download file from Slack API using bot token
+- Extract text content (for .txt, .md, .pdf)
+- Include file content in context for LLM
+
+**Slack API:**
+```python
+# Get file info
+file_info = await client.files_info(file=event["files"][0]["id"])
+
+# Download file
+file_url = file_info["file"]["url_private"]
+headers = {"Authorization": f"Bearer {SLACK_BOT_TOKEN}"}
+response = await session.get(file_url, headers=headers)
+file_content = response.text
+```
+
+**Priority:** MEDIUM - Useful but not critical
+
+#### 3. Test Multi-Turn Conversations
 Send 3-5 messages to verify:
 - History persists correctly
 - Bot references previous context
