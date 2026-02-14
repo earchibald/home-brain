@@ -28,6 +28,16 @@ from clients.llm_client import OllamaClient, Message
 from clients.brain_io import BrainIO
 from clients.conversation_manager import ConversationManager
 
+# Import new slack_bot modules for enhanced features
+from slack_bot.message_processor import detect_file_attachments
+from slack_bot.file_handler import download_file_from_slack, extract_text_content
+from slack_bot.performance_monitor import PerformanceMonitor
+from slack_bot.exceptions import (
+    FileDownloadError,
+    UnsupportedFileTypeError,
+    FileExtractionError,
+)
+
 
 class SlackAgent(Agent):
     """Slack conversation bot with brain context and multi-turn memory"""
@@ -78,7 +88,16 @@ When relevant, search the brain for context to provide informed, personalized re
 
 Be concise but thorough. If you don't know something, say so rather than making assumptions."""
         )
-        
+
+        # Initialize performance monitoring
+        self.performance_monitor = PerformanceMonitor(
+            slow_threshold_seconds=config.get("slow_response_threshold", 30.0)
+        )
+
+        # Feature flags
+        self.enable_file_attachments = config.get("enable_file_attachments", True)
+        self.enable_performance_alerts = config.get("enable_performance_alerts", True)
+
         # Register event handlers
         self._register_handlers()
     
@@ -102,6 +121,23 @@ Be concise but thorough. If you don't know something, say so rather than making 
             text = event.get("text", "").strip()
             thread_ts = event.get("thread_ts", event.get("ts"))
             channel_id = event.get("channel")
+
+            # Handle file attachments if present
+            file_content = ""
+            if self.enable_file_attachments:
+                attachments = detect_file_attachments(event)
+                for attachment in attachments:
+                    try:
+                        file_content += await self._process_file_attachment(
+                            attachment, channel_id, user_id
+                        )
+                    except Exception as e:
+                        self.logger.warning(f"Failed to process attachment {attachment['name']}: {e}")
+                        # Continue - file processing failure shouldn't stop message handling
+
+            # Combine text and file content
+            if file_content:
+                text = f"{text}\n\n**Attachments:**\n{file_content}" if text else file_content
 
             if not text:
                 return
@@ -158,6 +194,45 @@ Be concise but thorough. If you don't know something, say so rather than making 
             """Handle @mentions (future: support channel conversations)"""
             await say("Hi! For now, please DM me directly for conversations.")
     
+    async def _process_file_attachment(
+        self,
+        attachment: Dict,
+        channel_id: str,
+        user_id: str
+    ) -> str:
+        """
+        Process a file attachment and extract text content.
+
+        Args:
+            attachment: File attachment info from detect_file_attachments()
+            channel_id: Slack channel ID
+            user_id: Slack user ID
+
+        Returns:
+            Extracted text content, or empty string on failure
+        """
+        file_name = attachment.get("name", "unknown")
+        file_type = attachment.get("type", "")
+        url = attachment.get("url_private_download", "")
+
+        if not url or not file_type:
+            self.logger.warning(f"Missing URL or type for attachment {file_name}")
+            return ""
+
+        try:
+            # Download file from Slack
+            file_content = download_file_from_slack(url, token=self.bot_token)
+
+            # Extract text content
+            text = extract_text_content(file_content, file_type=file_type)
+
+            self.logger.info(f"Extracted text from {file_name} ({len(text)} chars)")
+            return f"**File: {file_name}**\n{text}\n"
+
+        except (FileDownloadError, FileExtractionError, UnsupportedFileTypeError) as e:
+            self.logger.warning(f"Error processing attachment {file_name}: {e}")
+            return f"*Could not process file {file_name}: {str(e)}*\n"
+
     async def _process_message(
         self,
         user_id: str,
@@ -278,6 +353,18 @@ Be concise but thorough. If you don't know something, say so rather than making 
             f"Generated response for {user_id} in {latency:.2f}s "
             f"(history: {len(history)} msgs, context: {bool(context)})"
         )
+
+        # Record performance metrics
+        if self.enable_performance_alerts:
+            try:
+                self.performance_monitor.record_response_time(
+                    request_id=f"{user_id}:{thread_id}",
+                    duration_seconds=latency,
+                    user_id=user_id,
+                    channel_id=thread_id
+                )
+            except Exception as e:
+                self.logger.warning(f"Failed to record performance metric: {e}")
 
         return response
     
