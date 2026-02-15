@@ -118,7 +118,7 @@ Be concise but thorough. If you don't know something, say so rather than making 
                 return
 
             user_id = event.get("user")
-            text = event.get("text", "").strip()
+            user_message = event.get("text", "").strip()  # Keep original message separate
             thread_ts = event.get("thread_ts", event.get("ts"))
             channel_id = event.get("channel")
 
@@ -139,9 +139,8 @@ Be concise but thorough. If you don't know something, say so rather than making 
                         self.logger.warning(f"Failed to process attachment {attachment['name']}: {e}")
                         # Continue - file processing failure shouldn't stop message handling
 
-            # Combine text and file content
-            if file_content:
-                text = f"{text}\n\n**Attachments:**\n{file_content}" if text else file_content
+            # Combine text and file content for LLM
+            text = f"{user_message}\n\n**Attachments:**\n{file_content}" if file_content else user_message
 
             if not text:
                 return
@@ -273,11 +272,16 @@ Be concise but thorough. If you don't know something, say so rather than making 
             )
         
         # Search brain for context (if enabled)
+        # Use original user message for Khoj search, not combined text with attachments
         context = ""
-        if self.enable_khoj_search and len(text) > 10:
+        khoj_query = user_message if user_message else text
+        # Truncate query to reasonable length for Khoj (avoid URL too long errors)
+        khoj_query = khoj_query[:500]
+
+        if self.enable_khoj_search and len(khoj_query) > 10:
             try:
                 search_results = await self.khoj.search(
-                    query=text,
+                    query=khoj_query,
                     content_type="markdown",
                     limit=self.max_search_results
                 )
