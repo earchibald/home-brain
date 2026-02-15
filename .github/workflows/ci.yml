@@ -86,3 +86,14 @@ jobs:
               -H 'Content-Type: application/json' \
               -d '{"text": "✅ CI passed on main (${{ github.sha }})"}'
           fi
+
+      - name: Notify Slack on failure
+        if: ${{ needs.test.result == 'failure' || needs.lint.result == 'failure' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -s -X POST "$SLACK_WEBHOOK_URL" \
+              -H 'Content-Type: application/json' \
+              -d "{\"text\": \"🔴 CI failed on main - <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>\"}"
+          fi
