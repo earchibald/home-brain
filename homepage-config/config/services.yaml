@@ -18,13 +18,13 @@
         - "NUC-1":
             href: "http://nuc-1.local:8384"
             description: "Syncthing on NUC-1"
-            ping: "http://nuc-1.local:8384"
+            siteMonitor: "http://nuc-1.local:8384"
         - "NUC-2":
             href: "http://nuc-2.local:8384"
             description: "Syncthing on NUC-2"
-            ping: "http://nuc-2.local:8384"
+            siteMonitor: "http://nuc-2.local:8384"
         - "NUC-3":
             href: "http://nuc-3.local:8384"
             description: "Syncthing on NUC-3"
-            ping: "http://nuc-3.local:8384"
+            siteMonitor: "http://nuc-3.local:8384"
 

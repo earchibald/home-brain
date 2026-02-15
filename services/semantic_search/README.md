@@ -72,7 +72,7 @@ python search_api.py
 
 Environment variables (see `docker-compose.yml`):
 
-- `OLLAMA_URL`: Ollama API URL (default: `http://192.168.1.58:11434`)
+- `OLLAMA_URL`: Ollama API URL (default: `http://m1-mini.local:11434`)
 - `EMBEDDING_MODEL`: Model name (default: `nomic-embed-text`)
 - `BRAIN_PATH`: Path to brain directory (default: `/home/earchibald/brain`)
 - `CHROMA_PERSIST_DIR`: ChromaDB data directory (default: `./chroma_data`)
@@ -89,8 +89,8 @@ Environment variables (see `docker-compose.yml`):
 ## Migration from Khoj
 
 1. Deploy semantic search service
-2. Verify health: `curl http://192.168.1.195:42110/api/health`
-3. Test search: `curl "http://192.168.1.195:42110/api/search?q=test"`
+2. Verify health: `curl http://nuc-1.local:42110/api/health`
+3. Test search: `curl "http://nuc-1.local:42110/api/search?q=test"`
 4. Update client code (optional - API compatible)
 5. Stop Khoj containers: `docker-compose down` (in NUC-1 ~/)
 6. Remove Khoj cron job: `crontab -e` and delete reindex line

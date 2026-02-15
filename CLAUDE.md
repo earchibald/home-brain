@@ -89,9 +89,9 @@ cp secrets.env.backup secrets.env
 ## Host Access
 
 All passwordless via SSH configured user `earchibald`:
-- `ssh nuc-1` (192.168.1.195) — Khoj + Postgres + Syncthing
-- `ssh nuc-2` (192.168.1.196) — Automation + Syncthing
-- `ssh nuc-3` (192.168.1.197) — Storage + Restic + Syncthing + rclone + pCloud
+- `ssh nuc-1` (nuc-1.local) — Khoj + Postgres + Syncthing
+- `ssh nuc-2` (nuc-2.local) — Automation + Syncthing
+- `ssh nuc-3` (nuc-3.local) — Storage + Restic + Syncthing + rclone + pCloud
 
 All have passwordless sudo for `earchibald` user.
 

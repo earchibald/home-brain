@@ -14,10 +14,10 @@ This document provides a complete end-to-end guide for setting up the 6-node dis
 
 | Host         | Role           | IP            | Key Services                 |
 | :----------- | :------------- | :------------ | :--------------------------- |
-| **NUC-1**    | **Librarian**  | 192.168.1.195 | Khoj (RAG App), Postgres, Syncthing |
-| **NUC-2**    | **Automation** | 192.168.1.196 | Python Agents, Scrapers, Syncthing |
-| **NUC-3**    | **Storage Hub**| 192.168.1.197 | Syncthing (Introducer), Restic |
-| **Mac Mini** | **Inference**  | 192.168.1.58  | Ollama (Llama 3.2)           |
+| **NUC-1**    | **Librarian**  | nuc-1.local | Khoj (RAG App), Postgres, Syncthing |
+| **NUC-2**    | **Automation** | nuc-2.local | Python Agents, Scrapers, Syncthing |
+| **NUC-3**    | **Storage Hub**| nuc-3.local | Syncthing (Introducer), Restic |
+| **Mac Mini** | **Inference**  | m1-mini.local  | Ollama (Llama 3.2)           |
 | **Laptop**   | **Workstation**| *DHCP*        | Local Agent, Just CLI, Syncthing |
 | **Mobile**   | **Secondary**  | *DHCP*        | Khoj Client                  |
 
@@ -191,11 +191,11 @@ This document provides a complete end-to-end guide for setting up the 6-node dis
           - KHOJ_DJANGO_SECRET_KEY=long_random_secret_key_here
           - KHOJ_CONTENT_DIRECTORIES=/app/brain
           - KHOJ_CONTENT_TYPES=markdown,pdf,text
-          - OPENAI_API_BASE=http://192.168.1.58:11434/v1
+          - OPENAI_API_BASE=http://m1-mini.local:11434/v1
           - OPENAI_API_KEY=any_string
           - OLLAMA_MODEL_NAME=llama3.2
           - KHOJ_EMBEDDING_MODEL=nomic-embed-text
-          - KHOJ_DOMAIN=192.168.1.195
+          - KHOJ_DOMAIN=nuc-1.local
           - KHOJ_PORT=42110
           - KHOJ_NO_HTTPS=true
 

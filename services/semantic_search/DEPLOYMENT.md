@@ -176,7 +176,7 @@ find /home/earchibald/brain -name "*.md" -o -name "*.txt" -o -name "*.pdf"
 
 ```bash
 # Check Ollama performance
-curl http://192.168.1.58:11434
+curl http://m1-mini.local:11434
 
 # Monitor container resources
 docker stats brain_semantic_search
@@ -191,7 +191,7 @@ docker stats brain_semantic_search
 curl http://localhost:42110/api/stats
 
 # Test Ollama embeddings directly
-curl http://192.168.1.58:11434/api/embeddings -d '{"model": "nomic-embed-text", "prompt": "test"}'
+curl http://m1-mini.local:11434/api/embeddings -d '{"model": "nomic-embed-text", "prompt": "test"}'
 
 # Check service logs for errors
 docker-compose logs -f

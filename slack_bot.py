@@ -79,8 +79,8 @@ class SlackBotService:
         ]
 
         optional = {
-            "KHOJ_URL": "http://192.168.1.195:42110",
-            "OLLAMA_URL": "http://192.168.1.58:11434",
+            "KHOJ_URL": "http://nuc-1.local:42110",
+            "OLLAMA_URL": "http://m1-mini.local:11434",
             "BRAIN_FOLDER": "/home/earchibald/brain",
             "NTFY_TOPIC": "brain-notifications",
         }

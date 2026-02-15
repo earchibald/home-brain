@@ -43,8 +43,8 @@ class TestHealthChecks:
         """
         config = {
             "brain_path": str(test_brain_path),
-            "ollama_url": "http://192.168.1.58:11434",
-            "khoj_url": "http://192.168.1.195:42110",
+            "ollama_url": "http://m1-mini.local:11434",
+            "khoj_url": "http://nuc-1.local:42110",
             "model": "llama3.2",
             "enable_khoj_search": True,
         }
@@ -93,8 +93,8 @@ class TestHealthChecks:
         """
         config = {
             "brain_path": str(test_brain_path),
-            "ollama_url": "http://192.168.1.58:11434",
-            "khoj_url": "http://192.168.1.195:42110",
+            "ollama_url": "http://m1-mini.local:11434",
+            "khoj_url": "http://nuc-1.local:42110",
             "model": "llama3.2",
         }
 
@@ -142,8 +142,8 @@ class TestHealthChecks:
         """
         config = {
             "brain_path": str(test_brain_path),
-            "ollama_url": "http://192.168.1.58:11434",
-            "khoj_url": "http://192.168.1.195:42110",
+            "ollama_url": "http://m1-mini.local:11434",
+            "khoj_url": "http://nuc-1.local:42110",
             "model": "llama3.2",
             "enable_khoj_search": True,
         }
@@ -198,8 +198,8 @@ class TestHealthChecks:
         # Use a non-existent path
         config = {
             "brain_path": "/nonexistent/path/that/does/not/exist",
-            "ollama_url": "http://192.168.1.58:11434",
-            "khoj_url": "http://192.168.1.195:42110",
+            "ollama_url": "http://m1-mini.local:11434",
+            "khoj_url": "http://nuc-1.local:42110",
             "model": "llama3.2",
         }
 
@@ -241,8 +241,8 @@ class TestHealthChecks:
         """
         config = {
             "brain_path": str(test_brain_path),
-            "ollama_url": "http://192.168.1.58:11434",
-            "khoj_url": "http://192.168.1.195:42110",
+            "ollama_url": "http://m1-mini.local:11434",
+            "khoj_url": "http://nuc-1.local:42110",
             "model": "llama3.2",
         }
 
@@ -293,8 +293,8 @@ class TestHealthCheckEdgeCases:
         """
         config = {
             "brain_path": str(test_brain_path),
-            "ollama_url": "http://192.168.1.58:11434",
-            "khoj_url": "http://192.168.1.195:42110",
+            "ollama_url": "http://m1-mini.local:11434",
+            "khoj_url": "http://nuc-1.local:42110",
             "model": "llama3.2",
         }
 
@@ -375,8 +375,8 @@ class TestHealthCheckRecovery:
         """
         config = {
             "brain_path": str(test_brain_path),
-            "ollama_url": "http://192.168.1.58:11434",
-            "khoj_url": "http://192.168.1.195:42110",
+            "ollama_url": "http://m1-mini.local:11434",
+            "khoj_url": "http://nuc-1.local:42110",
             "model": "llama3.2",
         }
 

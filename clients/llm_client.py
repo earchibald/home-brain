@@ -1,5 +1,5 @@
 """
-Ollama Client - LLM inference client for Mac Mini (192.168.1.58:11434)
+Ollama Client - LLM inference client for Mac Mini (m1-mini.local:11434)
 """
 
 import httpx
@@ -19,11 +19,11 @@ class Message:
 
 
 class OllamaClient:
-    """Async client for Ollama API on Mac Mini (192.168.1.58:11434)"""
+    """Async client for Ollama API on Mac Mini (m1-mini.local:11434)"""
 
     def __init__(
         self,
-        base_url: str = "http://192.168.1.58:11434",
+        base_url: str = "http://m1-mini.local:11434",
         model: str = "llama3.2",
         timeout: int = 60,
     ):
@@ -344,7 +344,7 @@ Themes:"""
 
 # Convenience factory function
 async def get_ollama_client(
-    base_url: str = "http://192.168.1.58:11434", model: str = "llama3.2"
+    base_url: str = "http://m1-mini.local:11434", model: str = "llama3.2"
 ) -> OllamaClient:
     """Factory function to create and return an OllamaClient"""
     return OllamaClient(base_url, model)

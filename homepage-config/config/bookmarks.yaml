@@ -1,6 +1,59 @@
-- "Favorites":
-    - "Google":
-        - href: "https://www.google.com"
+---
+# Bookmarks for Homepage Dashboard
+# Based on AI tools hierarchy
+#
+# NOTE: To populate from Safari bookmarks, you need to:
+# 1. Export Safari bookmarks to HTML
+# 2. Convert to YAML format
+# 3. Or manually add your bookmarks below
+#
+# This is a default AI-focused bookmark structure
+
+- "AI Tools":
+    - "ChatGPT":
+        - href: "https://chat.openai.com"
+          abbr: "GPT"
+          description: "OpenAI ChatGPT"
+    - "Claude":
+        - href: "https://claude.ai"
+          abbr: "CL"
+          description: "Anthropic Claude"
+    - "Gemini":
+        - href: "https://gemini.google.com"
+          abbr: "GM"
+          description: "Google Gemini"
+    - "Perplexity":
+        - href: "https://www.perplexity.ai"
+          abbr: "PX"
+          description: "Perplexity AI"
+    
+- "AI Research":
+    - "ArXiv":
+        - href: "https://arxiv.org"
+          abbr: "AX"
+          description: "Research Papers"
+    - "Hugging Face":
+        - href: "https://huggingface.co"
+          abbr: "HF"
+          description: "Model Hub"
+    - "Papers With Code":
+        - href: "https://paperswithcode.com"
+          abbr: "PWC"
+          description: "ML Papers & Code"
+
+- "Development":
+    - "GitHub":
+        - href: "https://github.com"
+          abbr: "GH"
+          description: "Code Repository"
+    - "Ollama":
+        - href: "https://ollama.com"
+          abbr: "OL"
+          description: "Local LLM Runtime"
+
 - "Documentation":
     - "Homepage":
         - href: "https://gethomepage.dev"
+          abbr: "HP"
+          description: "Homepage Dashboard Docs"
+

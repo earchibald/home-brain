@@ -158,8 +158,8 @@ export SLACK_APP_TOKEN="xapp-1-..."
 export SLACK_BOT_TOKEN="xoxb-..."
 
 # Existing (already configured)
-export KHOJ_URL="http://192.168.1.195:42110"
-export OLLAMA_URL="http://192.168.1.58:11434"
+export KHOJ_URL="http://nuc-1.local:42110"
+export OLLAMA_URL="http://m1-mini.local:11434"
 export BRAIN_FOLDER="/home/earchibald/brain"
 export NTFY_TOPIC="brain-notifications"
 ```

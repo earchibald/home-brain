@@ -4,7 +4,7 @@
 
 ### pCloud Offsite Backup — COMPLETE
 
-Implemented dual offsite backup strategy on NUC-3 (192.168.1.197):
+Implemented dual offsite backup strategy on NUC-3 (nuc-3.local):
 
 1. **Installed rclone** on Mac (Homebrew v1.73.0) and NUC-3 (apt v1.60.1)
 2. **Completed pCloud OAuth** — token stored in `~/.config/rclone/rclone.conf` on NUC-3 (mode 600, US region `api.pcloud.com`)
@@ -77,10 +77,10 @@ NUC-2 is described as "Python Agents, Scrapers, Syncthing" but the implementatio
 ### How to Investigate
 ```bash
 # Check Khoj API endpoints
-curl -s http://192.168.1.195:42110/api/ | python3 -m json.tool
+curl -s http://nuc-1.local:42110/api/ | python3 -m json.tool
 
 # Check Khoj automations
-curl -s http://192.168.1.195:42110/api/automations
+curl -s http://nuc-1.local:42110/api/automations
 
 # Check what's on NUC-2
 ssh nuc-2 'ls -la ~/agents/ && pip list 2>/dev/null'
@@ -95,10 +95,10 @@ ssh nuc-1 'docker exec brain_khoj pip show khoj-assistant 2>/dev/null'
 
 | Host | IP | Role | Key Services | Backup |
 |------|----|------|-------------|--------|
-| Mac Mini | 192.168.1.58 | Inference | Ollama (llama3.2, nomic-embed-text) | — |
-| NUC-1 | 192.168.1.195 | Librarian | Khoj (HTTP on :42110, no TLS), Postgres, Syncthing | — |
-| NUC-2 | 192.168.1.196 | Automation | Syncthing, journal_bot.py, Python venv | — |
-| NUC-3 | 192.168.1.197 | Storage Hub | Syncthing (Docker, introducer), Restic, rclone | Local (3 AM) + pCloud (3:30 AM) |
+| Mac Mini | m1-mini.local | Inference | Ollama (llama3.2, nomic-embed-text) | — |
+| NUC-1 | nuc-1.local | Librarian | Khoj (HTTP on :42110, no TLS), Postgres, Syncthing | — |
+| NUC-2 | nuc-2.local | Automation | Syncthing, journal_bot.py, Python venv | — |
+| NUC-3 | nuc-3.local | Storage Hub | Syncthing (Docker, introducer), Restic, rclone | Local (3 AM) + pCloud (3:30 AM) |
 
 ### NUC-3 Crontab
 ```
@@ -110,7 +110,7 @@ ssh nuc-1 'docker exec brain_khoj pip show khoj-assistant 2>/dev/null'
 ### Access Notes
 - All NUCs accessible via `ssh nuc-1`, `ssh nuc-2`, `ssh nuc-3` (passwordless SSH)
 - All NUCs have passwordless sudo for `earchibald`
-- Khoj web UI: `http://nuc-1.local:42110` or `http://192.168.1.195:42110` (HTTP only, not HTTPS)
+- Khoj web UI: `http://nuc-1.local:42110` or `http://nuc-1.local:42110` (HTTP only, not HTTPS)
 - Khoj runs in `--anonymous-mode`
 - Notification topic: `omnibus-brain-notifications-v3` via ntfy.sh
 

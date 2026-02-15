@@ -18,7 +18,7 @@ The following components have been successfully set up and configured:
 
 ### **3.1. NUC-1 (Orchestrator/Scheduler)**
 
-*   **IP Address:** 192.168.1.195
+*   **IP Address:** nuc-1.local
 *   **SSH Access:** Configured for passwordless SSH for `earchibald` user.
 *   **Sudo Rights:** `earchibald` has passwordless `sudo`.
 *   **Software:** Docker, Docker Compose, Syncthing.
@@ -75,11 +75,11 @@ The following components have been successfully set up and configured:
           - KHOJ_DJANGO_SECRET_KEY=long_random_secret_key_here
           - KHOJ_CONTENT_DIRECTORIES=/app/brain
           - KHOJ_CONTENT_TYPES=markdown,pdf,text
-          - OPENAI_API_BASE=http://192.168.1.58:11434/v1
+          - OPENAI_API_BASE=http://m1-mini.local:11434/v1
           - OPENAI_API_KEY=any_string
           - OLLAMA_MODEL_NAME=llama3.2
           - KHOJ_EMBEDDING_MODEL=nomic-embed-text
-          - KHOJ_DOMAIN=192.168.1.195
+          - KHOJ_DOMAIN=nuc-1.local
           - KHOJ_PORT=42110
           - KHOJ_NO_HTTPS=true
         healthcheck:
@@ -155,7 +155,7 @@ These patterns were identified during Khoj deployment and should be preserved in
 
 ### **3.2. NUC-2 (Automation)**
 
-*   **IP Address:** 192.168.1.196
+*   **IP Address:** nuc-2.local
 *   **SSH Access:** Configured for passwordless SSH for `earchibald` user.
 *   **Sudo Rights:** `earchibald` has passwordless `sudo`.
 *   **Software:** Syncthing, Python environment (`python3-venv`, `python3-pip`).
@@ -209,7 +209,7 @@ These patterns were identified during Khoj deployment and should be preserved in
 
 ### **3.3. NUC-3 (Storage Hub)**
 
-*   **IP Address:** 192.168.1.197
+*   **IP Address:** nuc-3.local
 *   **SSH Access:** Configured for passwordless SSH for `earchibald` user.
 *   **Sudo Rights:** `earchibald` has passwordless `sudo`.
 *   **Software:** Docker, Docker Compose, Restic, Syncthing (in Docker).
@@ -292,7 +292,7 @@ These patterns were identified during Khoj deployment and should be preserved in
 
 ### **3.4. Mac Mini (Inference)**
 
-*   **IP Address:** 192.168.1.58
+*   **IP Address:** m1-mini.local
 *   **Software:** Ollama.
 *   **Models:** `llama3.2`, `nomic-embed-text` are pulled.
 *   **Environment:** `OLLAMA_HOST=0.0.0.0` is set.

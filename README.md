@@ -67,8 +67,8 @@ Create a config dict with:
 
 ```python
 config = {
-    "khoj_url": "http://192.168.1.195:42110",
-    "ollama_url": "http://192.168.1.58:11434",
+    "khoj_url": "http://nuc-1.local:42110",
+    "ollama_url": "http://m1-mini.local:11434",
     "brain_path": "/home/user/brain",
     "model": "llama3.2",
     "enable_file_attachments": True,
@@ -252,7 +252,7 @@ sudo journalctl -u brain-slack-bot | grep "attachment"
 sudo journalctl -u brain-slack-bot | grep "latency"
 
 # Check Ollama performance
-curl http://192.168.1.58:11434/api/tags
+curl http://m1-mini.local:11434/api/tags
 
 # Check conversation size
 ls -lh ~/brain/users/*/conversations/

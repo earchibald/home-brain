@@ -23,7 +23,7 @@ indexer: Optional[BrainIndexer] = None
 
 # Configuration (read from environment variables with defaults)
 CONFIG = {
-    "ollama_url": os.getenv("OLLAMA_URL", "http://192.168.1.58:11434"),
+    "ollama_url": os.getenv("OLLAMA_URL", "http://m1-mini.local:11434"),
     "embedding_model": os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
     "brain_path": os.getenv("BRAIN_PATH", "/home/earchibald/brain"),
     "chroma_persist_dir": os.getenv("CHROMA_PERSIST_DIR", "./chroma_data"),

@@ -353,7 +353,7 @@ docker compose up -d
 
 **Solution:** Add to `/etc/hosts` on each NUC:
 ```bash
-echo "192.168.1.195 vault.nuc-1.local" | sudo tee -a /etc/hosts
+echo "nuc-1.local vault.nuc-1.local" | sudo tee -a /etc/hosts
 ```
 
 ### Issue: SSL certificate errors

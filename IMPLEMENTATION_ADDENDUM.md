@@ -58,7 +58,7 @@ Completed NUC-2, NUC-3, and end-to-end verification for the distributed AI knowl
 - **Result:** End-to-end pipeline working (file sync -> indexing -> search)
 
 ### Ollama Inference
-- `curl http://192.168.1.58:11434` returns "Ollama is running"
+- `curl http://m1-mini.local:11434` returns "Ollama is running"
 - Accessible from NUC-1
 
 ### Notification System

@@ -26,7 +26,7 @@ class SearchResult:
 class SemanticSearchClient:
     """Async client for ChromaDB semantic search service."""
 
-    def __init__(self, base_url: str = "http://192.168.1.195:42110", timeout: int = 30):
+    def __init__(self, base_url: str = "http://nuc-1.local:42110", timeout: int = 30):
         """Initialize the client.
         
         Args:

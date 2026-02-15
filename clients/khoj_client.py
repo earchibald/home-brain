@@ -22,9 +22,9 @@ class SearchResult:
 
 
 class KhojClient:
-    """Async client for Khoj API on NUC-1 (192.168.1.195:42110)"""
+    """Async client for Khoj API on NUC-1 (nuc-1.local:42110)"""
 
-    def __init__(self, base_url: str = "http://192.168.1.195:42110", timeout: int = 30):
+    def __init__(self, base_url: str = "http://nuc-1.local:42110", timeout: int = 30):
         self.base_url = base_url.rstrip("/")
         self.timeout = httpx.Timeout(timeout)
         self.client = None
@@ -169,6 +169,6 @@ class KhojClient:
 
 
 # Convenience context manager
-async def get_khoj_client(base_url: str = "http://192.168.1.195:42110") -> KhojClient:
+async def get_khoj_client(base_url: str = "http://nuc-1.local:42110") -> KhojClient:
     """Factory function to create and return a KhojClient"""
     return KhojClient(base_url)

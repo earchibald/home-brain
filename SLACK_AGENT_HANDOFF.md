@@ -58,8 +58,8 @@
 │  agents/slack_agent.py                          │
 │    ├→ ConversationManager                       │
 │    │    └→ brain/users/{user_id}/conversations/ │
-│    ├→ KhojClient → NUC-1 (192.168.1.195:42110)  │
-│    └→ OllamaClient → Mac Mini (192.168.1.58:11434)│
+│    ├→ KhojClient → NUC-1 (nuc-1.local:42110)  │
+│    └→ OllamaClient → Mac Mini (m1-mini.local:11434)│
 └─────────────────────────────────────────────────┘
 ```
 
@@ -162,8 +162,8 @@ REQUIRED_ENV = [
 ]
 
 DEFAULT_CONFIG = {
-    "khoj_url": "http://192.168.1.195:42110",
-    "ollama_url": "http://192.168.1.58:11434",
+    "khoj_url": "http://nuc-1.local:42110",
+    "ollama_url": "http://m1-mini.local:11434",
     "brain_path": "/home/earchibald/brain",
     "model": "llama3.2",
     "enable_khoj_search": True,
@@ -249,8 +249,8 @@ pip install slack-bolt slack-sdk aiohttp
 ### External Services
 | Service | Location | Status | Purpose |
 |---------|----------|--------|---------|
-| Khoj | NUC-1: 192.168.1.195:42110 | ✅ Working | Semantic brain search |
-| Ollama | Mac Mini: 192.168.1.58:11434 | ✅ Working | LLM inference (llama3.2) |
+| Khoj | NUC-1: nuc-1.local:42110 | ✅ Working | Semantic brain search |
+| Ollama | Mac Mini: m1-mini.local:11434 | ✅ Working | LLM inference (llama3.2) |
 | Slack | Cloud (WebSocket) | ✅ Working | Message delivery |
 
 ---
@@ -491,19 +491,19 @@ ssh nuc-2 "sudo journalctl -u brain-slack-bot | grep 'Bolt app is running'"
 ### LLM Generation Failing
 ```bash
 # Test Ollama directly
-ssh nuc-2 "curl http://192.168.1.58:11434"
+ssh nuc-2 "curl http://m1-mini.local:11434"
 
 # Check available models
-ssh nuc-2 "curl http://192.168.1.58:11434/api/tags"
+ssh nuc-2 "curl http://m1-mini.local:11434/api/tags"
 
 # Test generation
-ssh nuc-2 'curl -X POST http://192.168.1.58:11434/api/chat -d "{\"model\":\"llama3.2\",\"messages\":[{\"role\":\"user\",\"content\":\"test\"}]}"'
+ssh nuc-2 'curl -X POST http://m1-mini.local:11434/api/chat -d "{\"model\":\"llama3.2\",\"messages\":[{\"role\":\"user\",\"content\":\"test\"}]}"'
 ```
 
 ### Khoj Search Failing
 ```bash
 # Test Khoj connection
-curl http://192.168.1.195:42110/api/settings
+curl http://nuc-1.local:42110/api/settings
 
 # Check Khoj service on NUC-1
 ssh nuc-1 "sudo systemctl status khoj"

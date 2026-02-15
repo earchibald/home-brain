@@ -14,8 +14,8 @@ A Slack bot that:
 ## Prerequisites
 
 - ✅ NUC-2 agent platform deployed ([NUC2_AGENT_FRAMEWORK.md](NUC2_AGENT_FRAMEWORK.md))
-- ✅ Khoj running on NUC-1 (192.168.1.195:42110)
-- ✅ Ollama running on Mac Mini (192.168.1.58:11434)
+- ✅ Khoj running on NUC-1 (nuc-1.local:42110)
+- ✅ Ollama running on Mac Mini (m1-mini.local:11434)
 - ✅ Slack workspace where you can create apps
 - ✅ SSH access to NUC-2
 
@@ -102,8 +102,8 @@ export SLACK_BOT_TOKEN="xoxb-1234-5678-abcdefghijklmnop"
 export SLACK_APP_TOKEN="xapp-1-A07-123456-abcdef123456"
 
 # System URLs (already configured, verify these are correct)
-export KHOJ_URL="http://192.168.1.195:42110"
-export OLLAMA_URL="http://192.168.1.58:11434"
+export KHOJ_URL="http://nuc-1.local:42110"
+export OLLAMA_URL="http://m1-mini.local:11434"
 export BRAIN_FOLDER="/home/earchibald/brain"
 export NTFY_TOPIC="brain-notifications"
 ```
@@ -267,14 +267,14 @@ ssh nuc-2 sudo journalctl -u brain-slack-bot -n 50
 
 **Common issues:**
 - **Token error:** Check `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` in secrets.env
-- **"Ollama unavailable":** Check Mac Mini is running: `curl http://192.168.1.58:11434`
-- **"Khoj unavailable":** Check NUC-1 is running: `curl http://192.168.1.195:42110`
+- **"Ollama unavailable":** Check Mac Mini is running: `curl http://m1-mini.local:11434`
+- **"Khoj unavailable":** Check NUC-1 is running: `curl http://nuc-1.local:42110`
 
 ### Slow Responses (>30 seconds)
 
 **Check Ollama:**
 ```bash
-curl -X POST http://192.168.1.58:11434/api/generate -d '{
+curl -X POST http://m1-mini.local:11434/api/generate -d '{
   "model": "llama3.2",
   "prompt": "Hello",
   "stream": false

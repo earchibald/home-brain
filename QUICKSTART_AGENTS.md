@@ -145,8 +145,8 @@ Khoj: "Based on your recent activity focusing on
 - Verify paths: `ls -la ~/agents/`
 
 **LLM responses are empty/slow:**
-- Check Ollama: `ssh nuc-2 'curl http://192.168.1.58:11434'`
-- Check if models loaded: `ssh nuc-2 'curl http://192.168.1.58:11434/api/tags'`
+- Check Ollama: `ssh nuc-2 'curl http://m1-mini.local:11434'`
+- Check if models loaded: `ssh nuc-2 'curl http://m1-mini.local:11434/api/tags'`
 
 **Brain folder permissions:**
 - `ssh nuc-2 'ls -la ~/brain/journal/'`
@@ -173,7 +173,7 @@ Khoj: "Based on your recent activity focusing on
 
 2. ✅ **Check Khoj indexed the new content**
    ```
-   Go to http://192.168.1.195:42110
+   Go to http://nuc-1.local:42110
    Search: "focus areas"  ← Should find today's journal
    Search: "ADHD"  ← Should find today's advice
    ```

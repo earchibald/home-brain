@@ -53,7 +53,7 @@ clients/
 - Uses `nomic-embed-text` model (384 dimensions)
 
 **Configuration**:
-- Base URL: `http://192.168.1.58:11434` (Mac Mini Ollama)
+- Base URL: `http://m1-mini.local:11434` (Mac Mini Ollama)
 - Model: `nomic-embed-text`
 - Timeout: Configurable (default: 30s)
 

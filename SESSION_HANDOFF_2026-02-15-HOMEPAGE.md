@@ -4,8 +4,36 @@ This document summarizes the current state of the Homepage implementation on `nu
 
 ## Last Updated
 
-**Date:** 2026-02-15 (evening)  
-**Status:** ✅ Fully operational and healthy
+**Date:** 2026-02-15 (evening - final update)  
+**Status:** ✅ Fully operational with VaultWarden integration ready
+
+## Recent Updates (Evening Session)
+
+### 1. Fixed Syncthing Status Display ✅
+**Issue:** Syncthing on NUC-2 and NUC-3 showed as "down" despite being accessible  
+**Root Cause:** CSRF protection in Syncthing blocked simple ping checks  
+**Solution:** Changed from `ping:` to `siteMonitor:` in services.yaml
+
+### 2. Migrated to VaultWarden for Secrets ✅
+**Previously:** Used SOPS for secrets management  
+**Now:** Homepage configured to fetch secrets from VaultWarden API  
+**Files Created:**
+- `fetch_secrets.py` - Python script to fetch secrets from VaultWarden
+- `start_homepage.sh` - Startup script that fetches secrets and starts container
+- `VAULTWARDEN_SETUP.md` - Complete setup guide
+
+### 3. Updated Bookmarks ✅
+**Previously:** Simple "Favorites" with just Google  
+**Now:** AI-focused bookmark hierarchy with:
+- AI Tools (ChatGPT, Claude, Gemini, Perplexity)
+- AI Research (ArXiv, Hugging Face, Papers With Code)
+- Development (GitHub, Ollama)
+- Documentation (Homepage)
+
+**Note:** Safari bookmarks couldn't be auto-extracted due to macOS permissions. Default AI bookmarks provided instead.
+
+### 4. Pre-configured Unifi Widget
+Unifi monitoring is ready to enable once credentials are added to VaultWarden (see instructions below).
 
 ## Design
 
@@ -45,19 +73,62 @@ The Homepage container is deployed on `nuc-1.local` and is fully functional.
     - Homepage: 200 OK
     - Vaultwarden: 200 OK
     - Semantic Search: 200 OK
-    - Syncthing (NUC-1, NUC-2, NUC-3): 200 OK
+    - Syncthing (NUC-1, NUC-2, NUC-3): 200 OK (using siteMonitor)
 *   Widgets are properly configured (logo, datetime, search)
-*   Service ping functionality is enabled
+*   Service monitoring is working (changed to siteMonitor for Syncthing)
 *   Automated monitoring via cron job
 *   Configuration files are properly structured
-*   Docker Compose configuration is optimized (removed obsolete version field)
+*   Docker Compose configuration is optimized
+*   **VaultWarden integration ready** (secrets fetch script deployed)
+*   **AI-focused bookmarks configured**
 
-### 🔄 Pending / Optional
+### 🔄 User Action Required
 
-*   **Unifi Widget:** Infrastructure is in place to add Unifi monitoring if credentials are provided
-    - Environment variables configured in docker-compose.yml
-    - Widget structure ready in configuration
-    - To enable: Add UNIFI_USERNAME and UNIFI_PASSWORD to secrets.env (see README.md)
+**To complete VaultWarden setup and enable Unifi monitoring:**
+
+1. **Get VaultWarden API Token:**
+   - Log in to https://vault.nuc-1.local
+   - Go to Settings → Account Security → Keys
+   - Click "View API Key" and copy the token
+
+2. **Set token on nuc-1:**
+   ```bash
+   ssh nuc-1.local
+   echo 'export VAULTWARDEN_TOKEN="your-token-here"' >> ~/.bashrc
+   source ~/.bashrc
+   ```
+
+3. **Add Unifi credentials to VaultWarden:**
+   - Create Login item named `UNIFI_USERNAME`
+     - Password field: your Unifi username
+   - Create Login item named `UNIFI_PASSWORD`
+     - Password field: your Unifi password
+   
+   **Important:** The "Name" field must match exactly (case-sensitive)
+
+4. **Add Unifi service to Homepage:**
+   - Edit `/home/earchibald/homepage-config/config/services.yaml` on nuc-1
+   - Add under Infrastructure → nuc-1:
+     ```yaml
+     - "Unifi":
+         href: "https://nuc-1.local:8443"
+         description: "Unifi Controller"
+         siteMonitor: "https://nuc-1.local:8443"
+         widget:
+           type: unifi
+           url: https://nuc-1.local:8443
+           username: {{HOMEPAGE_VAR_UNIFI_USERNAME}}
+           password: {{HOMEPAGE_VAR_UNIFI_PASSWORD}}
+     ```
+
+5. **Start Homepage with VaultWarden:**
+   ```bash
+   ssh nuc-1.local
+   cd ~/homepage-config
+   ./start_homepage.sh
+   ```
+
+**Full setup guide:** See `homepage-config/VAULTWARDEN_SETUP.md`
 
 ### ✅ Fixed Issues (from previous session)
 
@@ -68,7 +139,7 @@ The Homepage container is deployed on `nuc-1.local` and is fully functional.
 
 ## Recent Changes (2026-02-15)
 
-### Files Modified
+### Files Modified (Afternoon Session)
 
 1. **homepage-config/docker-compose.yml**
    - Changed healthcheck from `curl` to `wget --quiet --tries=1 --spider`
@@ -86,11 +157,55 @@ The Homepage container is deployed on `nuc-1.local` and is fully functional.
    - Added Syncthing monitoring for all 3 NUCs
    - Properly structured with working ping URLs
 
-4. **homepage-config/README.md (NEW)**
+4. **homepage-config/README.md (updated)**
    - Complete documentation for deployment
    - Instructions for configuring Unifi widget
    - Troubleshooting guide
    - Service monitoring details
+
+### Files Modified (Evening Session)
+
+1. **homepage-config/config/services.yaml**
+   - Changed Syncthing from `ping:` to `siteMonitor:` (fixes CSRF issue)
+
+2. **homepage-config/config/bookmarks.yaml**
+   - Replaced "Favorites" with AI-focused bookmarks
+   - Added: AI Tools, AI Research, Development, Documentation categories
+   - Default bookmarks: ChatGPT, Claude, Gemini, Perplexity, ArXiv, HuggingFace, etc.
+
+3. **homepage-config/README.md**
+   - Updated to reflect VaultWarden integration
+   - Removed SOPS references
+   - Added quick deploy instructions
+
+### Files Created (Evening Session)
+
+1. **homepage-config/fetch_secrets.py** (NEW)
+   - Python script to fetch secrets from VaultWarden API
+   - Uses VaultwardenClient from clients/vaultwarden_client.py
+   - Outputs secrets as shell exports
+   - Handles missing secrets gracefully
+
+2. **homepage-config/start_homepage.sh** (NEW)
+   - Startup script that fetches secrets from VaultWarden
+   - Validates VAULTWARDEN_TOKEN is set
+   - Starts/restarts Homepage container with secrets
+   - Replaces SOPS-based workflow
+
+3. **homepage-config/VAULTWARDEN_SETUP.md** (NEW)
+   - Complete guide for migrating from SOPS to VaultWarden
+   - Step-by-step instructions for:
+     - Creating VaultWarden API token
+     - Adding secrets to VaultWarden
+     - Configuring environment on nuc-1
+     - Testing and troubleshooting
+   - Instructions for Unifi widget setup
+   - Security notes and best practices
+
+4. **homepage-config/clients/** (DEPLOYED)
+   - Copied entire clients directory to nuc-1
+   - Provides VaultwardenClient for fetch_secrets.py
+   - Required for VaultWarden integration
 
 ### Deployment Commands Used
 
@@ -175,26 +290,44 @@ fi
 
 ## Next Steps / Future Enhancements
 
+### Immediate (User Action Required)
+
+**See [HOMEPAGE_USER_INSTRUCTIONS.md](../HOMEPAGE_USER_INSTRUCTIONS.md) for step-by-step guide.**
+
+1. **Get VaultWarden API token** from https://vault.nuc-1.local
+2. **Set token on nuc-1:** `export VAULTWARDEN_TOKEN="..."`
+3. **Add Unifi credentials to VaultWarden** (if using Unifi widget)
+4. **Start Homepage:** `cd ~/homepage-config && ./start_homepage.sh`
+
+### Optional Enhancements
+
 1. **Add Ollama Service Monitoring**  
    - Check if Ollama has a health endpoint on the Mac Mini
    - Add to services.yaml if available
 
-2. **Configure Unifi Widget (Optional)**  
-   - Add credentials to secrets.env
-   - Re-enable Unifi service in services.yaml
-   - Deploy with environment variables
+2. **Enable More VaultWarden Secrets**  
+   - Migrate any remaining SOPS secrets to VaultWarden
+   - Add to fetch_secrets.py as needed
 
-3. **Add Resource Widgets**  
+3. **Customize Bookmarks**  
+   - Edit bookmarks.yaml with your personal favorites
+   - Current bookmarks are AI-focused defaults
+
+4. **Add Resource Widgets**  
    - Consider adding system resource monitoring (CPU, memory, disk)
    - Requires Homepage to access host metrics
 
-4. **Link Integration**  
+5. **Link Integration**  
    - Add more useful bookmarks
    - Integrate with documentation sites
 
-5. **Service-Specific Widgets**  
+6. **Service-Specific Widgets**  
    - Vaultwarden widget (if API available)
    - Syncthing status widget
+
+7. **Auto-Start on Boot**  
+   - Set up systemd service for Homepage
+   - See VAULTWARDEN_SETUP.md for instructions
 
 ## Maintenance
 

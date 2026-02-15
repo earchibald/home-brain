@@ -46,7 +46,7 @@ External Sources (RSS, APIs, files)
     ↓
 [Query Agent] → Khoj search + context
     ↓
-[Ollama LLM] (Mac Mini: 192.168.1.58)
+[Ollama LLM] (Mac Mini: m1-mini.local)
     ↓
 [Response Agent] → Write to brain + notify user
     ↓
@@ -305,11 +305,11 @@ agents:
 
 clients:
   khoj:
-    base_url: http://192.168.1.195:42110
+    base_url: http://nuc-1.local:42110
     timeout: 30s
   
   ollama:
-    base_url: http://192.168.1.58:11434
+    base_url: http://m1-mini.local:11434
     timeout: 60s
     model: llama3.2
 
@@ -328,7 +328,7 @@ notifications:
 - **Chat:** Future: Agents respond to user queries in Khoj chat interface
 
 ### With Ollama (Mac Mini)
-- **Inference:** All LLM calls go through Ollama on 192.168.1.58:11434
+- **Inference:** All LLM calls go through Ollama on m1-mini.local:11434
 - **Model:** llama3.2 for advice, summaries, journal suggestions
 - **Embedding:** Use nomic-embed-text for semantic search enrichment
 

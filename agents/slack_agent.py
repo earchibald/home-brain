@@ -71,10 +71,10 @@ class SlackAgent(Agent):
 
         # Initialize clients
         self.khoj = SemanticSearchClient(
-            base_url=config.get("khoj_url", "http://192.168.1.195:42110")
+            base_url=config.get("khoj_url", "http://nuc-1.local:42110")
         )
         self.llm = OllamaClient(
-            base_url=config.get("ollama_url", "http://192.168.1.58:11434")
+            base_url=config.get("ollama_url", "http://m1-mini.local:11434")
         )
         self.brain = BrainIO(
             brain_path=config.get("brain_path", "/home/earchibald/brain")
@@ -656,8 +656,8 @@ if __name__ == "__main__":
 
     # Test configuration
     config = {
-        "khoj_url": os.getenv("KHOJ_URL", "http://192.168.1.195:42110"),
-        "ollama_url": os.getenv("OLLAMA_URL", "http://192.168.1.58:11434"),
+        "khoj_url": os.getenv("KHOJ_URL", "http://nuc-1.local:42110"),
+        "ollama_url": os.getenv("OLLAMA_URL", "http://m1-mini.local:11434"),
         "brain_folder": os.getenv("BRAIN_FOLDER", "/tmp/test_brain"),
         "model": "llama3.2",
         "max_context_tokens": 6000,

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class OllamaEmbedder:
     """Client for generating embeddings using Ollama's nomic-embed-text model."""
     
-    def __init__(self, base_url: str = "http://192.168.1.58:11434", model: str = "nomic-embed-text"):
+    def __init__(self, base_url: str = "http://m1-mini.local:11434", model: str = "nomic-embed-text"):
         """Initialize the embedder.
         
         Args:

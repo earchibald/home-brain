@@ -6,11 +6,29 @@ This directory contains the configuration for the Homepage dashboard running on 
 
 The Homepage dashboard is accessible at: http://nuc-1.local:3000
 
-### Deploy Updated Configuration
+### Quick Deploy (with VaultWarden)
 
 ```bash
 # From the implementation directory
+
+# 1. Make scripts executable
+chmod +x homepage-config/start_homepage.sh
+chmod +x homepage-config/fetch_secrets.py
+
+# 2. Deploy files to nuc-1
 scp homepage-config/docker-compose.yml nuc-1.local:/home/earchibald/homepage-config/
+scp homepage-config/*.sh homepage-config/*.py nuc-1.local:/home/earchibald/homepage-config/
+scp homepage-config/config/* nuc-1.local:/home/earchibald/homepage-config/config/
+scp -r clients nuc-1.local:/home/earchibald/homepage-config/
+
+# 3. Start on nuc-1
+ssh nuc-1.local "cd /home/earchibald/homepage-config && ./start_homepage.sh"
+```
+
+### Deploy Updated Configuration Only
+
+```bash
+# From the implementation directory
 scp homepage-config/config/* nuc-1.local:/home/earchibald/homepage-config/config/
 
 # Restart the container
@@ -20,31 +38,61 @@ ssh nuc-1.local "cd /home/earchibald/homepage-config && docker compose restart h
 ## Configuration Files
 
 - `docker-compose.yml` - Container configuration
+- `start_homepage.sh` - Startup script with VaultWarden integration
+- `fetch_secrets.py` - Fetches secrets from VaultWarden
 - `config/services.yaml` - Services to monitor
 - `config/widgets.yaml` - Dashboard widgets
-- `config/bookmarks.yaml` - Bookmark links
+- `config/bookmarks.yaml` - Bookmark links (AI-focused hierarchy)
 - `config/settings.yaml` - General settings
+
+## Secrets Management (VaultWarden)
+
+Homepage now uses **VaultWarden** instead of SOPS for secrets management.
+
+**See [VAULTWARDEN_SETUP.md](VAULTWARDEN_SETUP.md) for complete setup instructions.**
+
+### Quick Setup Summary
+
+1. Get API token from VaultWarden (Settings → Keys → View API Key)
+2. Add secrets to VaultWarden as "Login" items with exact names:
+   - `UNIFI_USERNAME` (if using Unifi widget)
+   - `UNIFI_PASSWORD` (if using Unifi widget)
+3. Set token on nuc-1:
+   ```bash
+   export VAULTWARDEN_TOKEN="your-token-here"
+   ```
+4. Start Homepage:
+   ```bash
+   cd ~/homepage-config
+   ./start_homepage.sh
+   ```
 
 ## Unifi Widget Configuration
 
-The Unifi widget requires credentials to function. To configure:
+The Unifi widget is **pre-configured** but requires credentials in VaultWarden.
 
-1. Add credentials to `secrets.env` in the implementation directory:
-   ```bash
-   sops -d secrets.env > temp.env
-   echo "UNIFI_USERNAME=your_username" >> temp.env
-   echo "UNIFI_PASSWORD=your_password" >> temp.env
-   sops -e temp.env > secrets.env
-   rm temp.env
+### To Enable Unifi Monitoring:
+
+1. **Add credentials to VaultWarden:**
+   - Create item named `UNIFI_USERNAME` with your Unifi username in the password field
+   - Create item named `UNIFI_PASSWORD` with your Unifi password in the password field
+
+2. **Add Unifi service to services.yaml** (currently removed):
+   ```yaml
+   - "Unifi":
+       href: "https://nuc-1.local:8443"
+       description: "Unifi Controller"
+       siteMonitor: "https://nuc-1.local:8443"
+       widget:
+         type: unifi
+         url: https://nuc-1.local:8443
+         username: {{HOMEPAGE_VAR_UNIFI_USERNAME}}
+         password: {{HOMEPAGE_VAR_UNIFI_PASSWORD}}
    ```
 
-2. Deploy with credentials:
+3. **Restart Homepage:**
    ```bash
-   # On nuc-1
-   cd /home/earchibald/homepage-config
-   sops -d ~/implementation/secrets.env > .env
-   docker compose down
-   docker compose up -d
+   ssh nuc-1.local "cd ~/homepage-config && ./start_homepage.sh"
    ```
 
 ## Monitoring

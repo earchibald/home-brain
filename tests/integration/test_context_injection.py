@@ -49,8 +49,8 @@ class TestKhojContextInjection:
     def agent_config(self, test_brain_path):
         """Configuration for test Slack agent with Khoj enabled"""
         return {
-            "khoj_url": "http://192.168.1.195:42110",
-            "ollama_url": "http://192.168.1.58:11434",
+            "khoj_url": "http://nuc-1.local:42110",
+            "ollama_url": "http://m1-mini.local:11434",
             "brain_path": str(test_brain_path),
             "model": "llama3.2",
             "max_context_tokens": 6000,

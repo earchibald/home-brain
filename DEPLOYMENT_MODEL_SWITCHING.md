@@ -64,8 +64,8 @@ Update your bot startup config to enable model switching:
 
 ```python
 config = {
-    "khoj_url": "http://192.168.1.195:42110",
-    "ollama_url": "http://192.168.1.58:11434",
+    "khoj_url": "http://nuc-1.local:42110",
+    "ollama_url": "http://m1-mini.local:11434",
     "brain_path": "/home/earchibald/brain",
     "model": "llama3.2",
     "enable_model_switching": True,  # ← Enable the feature
