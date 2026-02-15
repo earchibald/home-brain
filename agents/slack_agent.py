@@ -148,9 +148,10 @@ Be concise but thorough. If you don't know something, say so rather than making 
 
             working_ts = None
             try:
-                # Send "working" indicator
+                # Send "working" indicator (customize based on attachment presence)
+                working_text = "Ingesting attachment... 📎" if file_content else "Working on it... 🧠"
                 try:
-                    working_msg = await say(text="Working on it... 🧠")
+                    working_msg = await say(text=working_text)
                     working_ts = working_msg.get("ts")
                     self.logger.debug(f"Sent working indicator: {working_ts}")
                 except Exception as e:
