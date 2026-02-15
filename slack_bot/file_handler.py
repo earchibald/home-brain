@@ -4,11 +4,14 @@ File handler for downloading and extracting text from various file types.
 
 from typing import Union
 import requests
+import logging
 from slack_bot.exceptions import (
     UnsupportedFileTypeError,
     FileDownloadError,
     FileExtractionError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # Supported file types for text extraction
@@ -31,9 +34,18 @@ def download_file_from_slack(url: str, token: str) -> bytes:
         FileDownloadError: If download fails
     """
     try:
+        # Try with Bearer token first
+        logger.info(f"Downloading from Slack: {url[:100]}...")
         headers = {'Authorization': f'Bearer {token}'}
         response = requests.get(url, headers=headers, timeout=30)
+
+        # If unauthorized, try without auth (some URLs don't need it)
+        if response.status_code == 401:
+            logger.warning(f"Bearer auth failed (401), retrying without auth")
+            response = requests.get(url, timeout=30)
+
         response.raise_for_status()
+        logger.info(f"Downloaded {len(response.content)} bytes from Slack (status: {response.status_code})")
         return response.content
     except requests.RequestException as e:
         raise FileDownloadError(f"Failed to download file from Slack: {e}")
@@ -100,10 +112,12 @@ def extract_text_content(
         if file_type == 'txt':
             # Plain text - decode directly
             text = file_content.decode('utf-8', errors='replace')
+            logger.info(f"Extracted text from .txt file: first 100 chars: {text[:100]}")
 
         elif file_type == 'md':
             # Markdown - decode directly (it's just text)
             text = file_content.decode('utf-8', errors='replace')
+            logger.info(f"Extracted text from .md file: first 100 chars: {text[:100]}")
 
         elif file_type == 'pdf':
             # PDF - use PyPDF2 to extract
