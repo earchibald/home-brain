@@ -73,15 +73,15 @@ class ModelManager:
             except Exception:
                 pass
 
-        # Check M4 Pro Laptop (eugenes-mbp)
-        laptop_url = "http://eugenes-mbp.local:11434"
+        # Check M4 Pro Laptop
+        laptop_url = "http://Eugenes-MacBook-Pro.local:11434"
         laptop_ip = resolve_host(laptop_url)
         if laptop_ip not in discovered_ips:
             try:
                 laptop = OllamaProvider(base_url=laptop_url)
                 if laptop.health_check():
                     laptop.id = "ollama_laptop"
-                    laptop.name = "Ollama (M4 Pro - eugenes-mbp.local)"
+                    laptop.name = "Ollama (M4 Pro Laptop)"
                     self.providers["ollama_laptop"] = laptop
                     discovered_ips.add(laptop_ip)
             except Exception:
