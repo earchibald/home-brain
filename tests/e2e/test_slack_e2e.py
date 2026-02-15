@@ -31,6 +31,7 @@ SLACK_TEST_BOT_TOKEN = os.getenv("SLACK_TEST_BOT_TOKEN")
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
 BRAIN_BOT_USER_ID = os.getenv("BRAIN_BOT_USER_ID")
 TEST_BOT_USER_ID = os.getenv("TEST_BOT_USER_ID")
+E2E_TEST_CHANNEL = os.getenv("E2E_TEST_CHANNEL", "test-e2e-brain-assistant")
 
 # Check if all required tokens are present
 has_all_tokens = all(
@@ -61,19 +62,44 @@ def brain_bot_client() -> Optional[WebClient]:
 
 
 @pytest.fixture
-def dm_channel(test_bot_client: WebClient) -> str:
+def test_channel(test_bot_client: WebClient) -> str:
     """
-    Open a DM channel between E2E Tester and Brain Assistant.
-
+    Get or create a test channel for E2E testing.
+    
+    Uses a shared channel instead of DMs to avoid bot-to-bot DM limitations.
     Returns:
-        str: Channel ID (e.g., "D01234ABCD")
+        str: Channel ID (e.g., "C01234ABCD")
     """
     try:
-        response = test_bot_client.conversations_open(users=[BRAIN_BOT_USER_ID])
-        channel_id = response["channel"]["id"]
+        # Try to find existing channel
+        response = test_bot_client.conversations_list(
+            exclude_archived=True,
+            types="private_channel"
+        )
+        
+        for channel in response.get("channels", []):
+            if channel["name"] == E2E_TEST_CHANNEL:
+                channel_id = channel["id"]
+                return channel_id
+        
+        # Channel doesn't exist, create it
+        create_response = test_bot_client.conversations_create(
+            name=E2E_TEST_CHANNEL,
+            is_private=True
+        )
+        channel_id = create_response["channel"]["id"]
+        
+        # Invite Brain Assistant bot to channel (use user ID)
+        test_bot_client.conversations_invite(
+            channel=channel_id,
+            users=[BRAIN_BOT_USER_ID]
+        )
+        
         return channel_id
+        
     except SlackApiError as e:
-        pytest.fail(f"Failed to open DM channel: {e.response['error']}")
+        pytest.fail(f"Failed to setup test channel: {e.response['error']}")
+
 
 
 def wait_for_response(
@@ -144,7 +170,7 @@ class TestSlackBotE2E:
     """End-to-end tests for Brain Assistant Slack bot"""
 
     def test_bot_responds_to_hello(
-        self, test_bot_client: WebClient, brain_bot_client: WebClient, dm_channel: str
+        self, test_bot_client: WebClient, brain_bot_client: WebClient, test_channel: str
     ):
         """
         Test basic response: Send "hello" and verify bot responds.
@@ -159,7 +185,7 @@ class TestSlackBotE2E:
         # Send test message
         try:
             response = test_bot_client.chat_postMessage(
-                channel=dm_channel, text="hello", as_user=True
+                channel=test_channel, text="hello", as_user=True
             )
             message_ts = response["ts"]
             print(f"✉️  Sent test message: hello (ts={message_ts})")
@@ -169,7 +195,7 @@ class TestSlackBotE2E:
         # Wait for response
         print("⏳ Waiting for bot response...")
         bot_response = wait_for_response(
-            brain_bot_client, dm_channel, after_ts=message_ts, timeout_seconds=60
+            brain_bot_client, test_channel, after_ts=message_ts, timeout_seconds=60
         )
 
         # Assertions
@@ -181,7 +207,7 @@ class TestSlackBotE2E:
         print(f"✅ Bot responded: {response_text[:100]}...")
 
     def test_bot_responds_to_question(
-        self, test_bot_client: WebClient, brain_bot_client: WebClient, dm_channel: str
+        self, test_bot_client: WebClient, brain_bot_client: WebClient, test_channel: str
     ):
         """
         Test substantive response: Send a question and verify meaningful answer.
@@ -197,7 +223,7 @@ class TestSlackBotE2E:
         test_question = "What is 2+2?"
         try:
             response = test_bot_client.chat_postMessage(
-                channel=dm_channel, text=test_question, as_user=True
+                channel=test_channel, text=test_question, as_user=True
             )
             message_ts = response["ts"]
             print(f"✉️  Sent test message: {test_question} (ts={message_ts})")
@@ -207,7 +233,7 @@ class TestSlackBotE2E:
         # Wait for response
         print("⏳ Waiting for bot response...")
         bot_response = wait_for_response(
-            brain_bot_client, dm_channel, after_ts=message_ts, timeout_seconds=60
+            brain_bot_client, test_channel, after_ts=message_ts, timeout_seconds=60
         )
 
         # Assertions
@@ -222,7 +248,7 @@ class TestSlackBotE2E:
         print(f"✅ Bot responded correctly: {response_text[:100]}...")
 
     def test_bot_handles_file_attachment(
-        self, test_bot_client: WebClient, brain_bot_client: WebClient, dm_channel: str
+        self, test_bot_client: WebClient, brain_bot_client: WebClient, test_channel: str
     ):
         """
         Test file attachment handling: Upload a text file and verify bot processes it.
@@ -251,7 +277,7 @@ class TestSlackBotE2E:
         try:
             # Upload file with message
             response = test_bot_client.files_upload_v2(
-                channel=dm_channel,
+                channel=test_channel,
                 file=tmp_path,
                 title="test_e2e.txt",
                 initial_comment="Here's a file for you",
@@ -264,7 +290,7 @@ class TestSlackBotE2E:
             time.sleep(2)
 
             # Get latest message timestamp as reference point
-            history = test_bot_client.conversations_history(channel=dm_channel, limit=1)
+            history = test_bot_client.conversations_history(channel=test_channel, limit=1)
             message_ts = history["messages"][0]["ts"]
 
             print(f"✉️  Uploaded test file: test_e2e.txt (ts={message_ts})")
@@ -278,7 +304,7 @@ class TestSlackBotE2E:
         # Wait for response (file processing takes longer)
         print("⏳ Waiting for bot response (file processing)...")
         bot_response = wait_for_response(
-            brain_bot_client, dm_channel, after_ts=message_ts, timeout_seconds=90
+            brain_bot_client, test_channel, after_ts=message_ts, timeout_seconds=90
         )
 
         # Assertions
