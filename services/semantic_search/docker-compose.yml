@@ -1,0 +1,29 @@
+services:
+  semantic-search:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: brain_semantic_search
+    restart: unless-stopped
+    ports:
+      - "42110:42110"
+    environment:
+      - OLLAMA_URL=http://192.168.1.58:11434
+      - EMBEDDING_MODEL=nomic-embed-text
+      - BRAIN_PATH=/app/brain
+      - CHROMA_PERSIST_DIR=/app/chroma_data
+      - WATCH_FILES=true
+      - NTFY_URL=https://ntfy.sh
+      - NTFY_TOPIC=omnibus-brain-notifications-v3
+    volumes:
+      - /home/earchibald/brain:/app/brain:ro
+      - ./chroma_data:/app/chroma_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:42110/api/health"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  chroma_data:

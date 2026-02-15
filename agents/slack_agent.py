@@ -23,7 +23,7 @@ from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_sdk.errors import SlackApiError
 
 from agent_platform import Agent
-from clients.khoj_client import KhojClient
+from clients.semantic_search_client import SemanticSearchClient
 from clients.llm_client import OllamaClient, Message
 from clients.brain_io import BrainIO
 from clients.conversation_manager import ConversationManager
@@ -59,7 +59,7 @@ class SlackAgent(Agent):
         self.socket_handler = None
 
         # Initialize clients
-        self.khoj = KhojClient(
+        self.khoj = SemanticSearchClient(
             base_url=config.get("khoj_url", "http://192.168.1.195:42110")
         )
         self.llm = OllamaClient(

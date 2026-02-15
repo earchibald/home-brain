@@ -1,0 +1,16 @@
+# Semantic Search Service Dependencies
+
+# Core dependencies
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+chromadb==0.5.20
+aiohttp==3.11.11
+
+# File watching
+watchdog==6.0.0
+
+# PDF processing
+PyPDF2==3.0.1
+
+# Optional dependencies for production
+python-dotenv==1.0.0

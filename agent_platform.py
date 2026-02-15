@@ -13,7 +13,7 @@ import json
 # Add clients to path
 sys.path.insert(0, str(Path(__file__).parent / "clients"))
 
-from khoj_client import KhojClient
+from clients.semantic_search_client import SemanticSearchClient
 from llm_client import OllamaClient
 from brain_io import BrainIO
 
@@ -39,12 +39,12 @@ class Agent:
     def __init__(
         self,
         name: str,
-        khoj: Optional[KhojClient] = None,
+        khoj: Optional[SemanticSearchClient] = None,
         llm: Optional[OllamaClient] = None,
         brain_io: Optional[BrainIO] = None,
     ):
         self.name = name
-        self.khoj = khoj or KhojClient()
+        self.khoj = khoj or SemanticSearchClient()
         self.llm = llm or OllamaClient()
         self.brain_io = brain_io or BrainIO()
         self.start_time = None
@@ -121,7 +121,7 @@ class AgentPlatform:
 
     def __init__(self):
         self.agents: Dict[str, Callable] = {}
-        self.khoj = KhojClient()
+        self.khoj = SemanticSearchClient()
         self.llm = OllamaClient()
         self.brain_io = BrainIO()
 

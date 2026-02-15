@@ -113,7 +113,8 @@ sudo journalctl -u brain-slack-bot -f
 │  │ 1. Detect file attachments (if enabled)              │   │
 │  │ 2. Download + extract text content                   │   │
 │  │ 3. Build LLM prompt with context                     │   │
-│  │ 4. Search Khoj brain for relevant notes              │   │
+│  │ 4. Search semantic brain for relevant notes          │   │
+│  │    (ChromaDB-based service, optional)                │   │
 │  │ 5. Call Ollama for response generation               │   │
 │  │ 6. Track performance metrics                         │   │
 │  │ 7. Save conversation history                         │   │
@@ -121,8 +122,8 @@ sudo journalctl -u brain-slack-bot -f
 └──────────────────────────────────────────────────────────────┘
         │          │           │           │
         ▼          ▼           ▼           ▼
-    [Files]   [Khoj]      [Ollama]    [Brain]
-                         (Inference)
+    [Files]  [Semantic]   [Ollama]    [Brain]
+             [Search]    (Inference)
 ```
 
 ### Feature Flags
@@ -134,9 +135,11 @@ config = {
     "enable_file_attachments": True,        # ✓ Working
     "enable_performance_alerts": True,      # ✓ Working
     "slow_response_threshold": 30.0,        # Default
-    "enable_khoj_search": True,             # ✓ Working
+    "enable_khoj_search": True,             # ✓ Working (semantic search)
 }
 ```
+
+**Note:** `enable_khoj_search` flag name preserved for backward compatibility, but now controls ChromaDB-based semantic search service. Search is optional and gracefully degrades if service unavailable.
 
 ---
 

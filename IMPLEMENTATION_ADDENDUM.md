@@ -107,3 +107,30 @@ Completed NUC-2, NUC-3, and end-to-end verification for the distributed AI knowl
 | NUC-2 | Automation (Agents + Syncthing) | Running, enabled, cron active |
 | NUC-3 | Storage Hub (Syncthing + Restic + pCloud) | Running, healthy, local + offsite backups active |
 | Notification System | ntfy.sh | Working across all NUCs |
+
+## Future Implementation Considerations
+
+### Semantic Search Service Migration (Khoj → ChromaDB)
+
+**Context:** The Khoj configuration constraints discovered in section 4 (environment variables not read, manual DB configuration required) were a contributing factor in the decision to migrate to a custom ChromaDB-based semantic search service.
+
+**Migration Drivers:**
+- Heavy infrastructure for single API endpoint (<5% of Khoj features used)
+- 30-minute indexing delay (cron-based vs. real-time file watching)
+- Configuration complexity (env vars not honored, direct DB setup required)
+- Zero test coverage for local deployment
+- Desire for full control over search behavior
+
+**Migration Guardrails:**
+These patterns were identified during the Khoj deployment and should be preserved in any replacement service:
+
+1. **Content Filtering:** Support `.md`, `.txt`, `.pdf` file types with recursive glob patterns (`/path/**/*.md`)
+2. **Search API Compatibility:** Preserve `/api/search?q={query}` endpoint format for client compatibility
+3. **Response Format:** JSON array with `entry` (snippet), `file` (path), `score` fields
+4. **Health Monitoring:** Continue health check endpoint pattern for monitoring and graceful degradation
+5. **Indexing Strategy:** Real-time file watching (debounced) plus periodic full scans
+6. **Embeddings:** Use `nomic-embed-text` (384d) via Ollama for consistency
+
+**Reference:** See "Semantic Search Service Patterns (Derived from Khoj)" section in `AGENT-INSTRUCTIONS.md` for complete pattern documentation.
+
+**Implementation Status:** Planned for future development. Current Khoj deployment remains operational until replacement service is ready and validated.
