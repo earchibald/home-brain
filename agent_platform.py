@@ -32,9 +32,6 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# Intentional syntax error to test CI failure workflow
-this_will_cause_a_syntax_error = undefined_variable
-
 
 class Agent:
     """Base class for all agents"""

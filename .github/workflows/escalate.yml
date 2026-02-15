@@ -92,13 +92,19 @@ jobs:
             core.setOutput('issue_url', issue.data.html_url);
             core.setOutput('issue_number', issue.data.number);
 
-            // Add comment to trigger Copilot agent
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issue.data.number,
-              body: '@copilot please investigate and fix this CI failure'
-            });
+            // Assign to @copilot to trigger Agent Mode (look for 👀 emoji reaction)
+            try {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.data.number,
+                assignees: ['copilot']
+              });
+              console.log('Successfully assigned issue to @copilot');
+            } catch (error) {
+              console.log('Could not assign to @copilot:', error.message);
+              console.log('You may need to manually assign the issue to @copilot via GitHub UI');
+            }
 
       - name: Notify Slack
         env:
