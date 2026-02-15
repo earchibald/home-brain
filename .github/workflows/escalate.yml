@@ -85,9 +85,8 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `CI Failure: Tests failing on ${branch} (${commitSha.substring(0, 7)})`,
-              body: body,
-              labels: ['bug'],
-              assignees: ['copilot']
+              body: body + '\n\n@copilot please investigate and fix',
+              labels: ['bug']
             });
 
             core.setOutput('issue_url', issue.data.html_url);
