@@ -324,8 +324,11 @@ You're not just answering questions—you're helping build and navigate a system
                 result = apply_model_selection(self.model_manager, provider_id, model_name)
 
                 if result["success"]:
+                    # Get provider name for clearer message
+                    provider_name = self.model_manager.providers.get(provider_id, {}).name if hasattr(self.model_manager.providers.get(provider_id), 'name') else provider_id
+
                     await respond(
-                        text=f"✅ Switched to {provider_id}: {model_name}",
+                        text=f"✅ **Selection saved:** {provider_name} - `{model_name}`\n_Note: Phase 1 - Selection saved but not yet used for inference_",
                         response_type="ephemeral",
                         replace_original=False,
                     )

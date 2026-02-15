@@ -76,16 +76,29 @@ def build_model_selector_ui(manager: ModelManager) -> List[Dict]:
         }
     )
 
-    # Model dropdown (initially show all models from all providers)
-    # In real use, this would be dynamically updated based on provider selection
+    # Model dropdown - show filtered models from all providers
     model_options = []
     for provider in available_providers:
-        for model in provider["models"][:5]:  # Limit to 5 models per provider
+        # Filter models based on provider type
+        models = provider["models"]
+
+        # For Ollama providers, only show llama models
+        if "ollama" in provider["id"].lower():
+            models = [m for m in models if "llama" in m.lower()]
+
+        # Add models with shortened names to avoid overflow
+        for model in models[:5]:  # Limit to 5 models per provider
+            # Shorten provider name for display
+            provider_short = provider['name'].replace("Ollama ", "").replace(" - ", " ")
+
+            # Shorten model name if too long
+            model_display = model[:30] + "..." if len(model) > 30 else model
+
             model_options.append(
                 {
                     "text": {
                         "type": "plain_text",
-                        "text": f"{provider['name']}: {model}",
+                        "text": f"{provider_short}: {model_display}",
                     },
                     "value": f"{provider['id']}:{model}",
                 }
@@ -101,6 +114,17 @@ def build_model_selector_ui(manager: ModelManager) -> List[Dict]:
                     "action_id": "select_model",
                     "placeholder": {"type": "plain_text", "text": "Choose model..."},
                     "options": model_options[:25],  # Slack limits to 100 options
+                },
+            }
+        )
+    else:
+        # No models available
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "⚠️ No compatible models found. Install llama models on your Ollama servers.",
                 },
             }
         )
