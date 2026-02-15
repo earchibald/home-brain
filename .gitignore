@@ -7,3 +7,13 @@ htmlcov/
 logs/
 *.pyc
 .DS_Store
+
+# Local environment and editor settings
+.env
+.vscode/
+
+# E2E run artifacts
+e2e-final/
+e2e-results/
+e2e-results-latest/
+e2e-run-*/
