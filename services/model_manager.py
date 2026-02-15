@@ -45,29 +45,38 @@ class ModelManager:
             try:
                 configured_ollama = OllamaProvider(base_url=ollama_url)
                 if configured_ollama.health_check():
+                    # Extract hostname from URL for clearer naming
+                    import re
+                    hostname = re.search(r'://([^:]+)', ollama_url)
+                    host_display = hostname.group(1) if hostname else ollama_url
                     configured_ollama.id = "ollama_configured"
-                    configured_ollama.name = f"Ollama (Configured)"
+                    configured_ollama.name = f"Ollama ({host_display})"
                     self.providers["ollama_configured"] = configured_ollama
             except Exception:
                 pass
 
-        # Check local Ollama
-        try:
-            local_ollama = OllamaProvider(base_url="http://localhost:11434")
-            if local_ollama.health_check():
-                self.providers["ollama_local"] = local_ollama
-        except Exception:
-            pass
+        # Check Mac Mini Ollama (should be different from configured)
+        mac_mini_url = "http://eugenes-mbp.local:11434"
+        if mac_mini_url != ollama_url:  # Don't check if it's already the configured one
+            try:
+                mac_mini = OllamaProvider(base_url=mac_mini_url)
+                if mac_mini.health_check():
+                    mac_mini.id = "ollama_mac_mini"
+                    mac_mini.name = "Ollama (Mac Mini - eugenes-mbp.local)"
+                    self.providers["ollama_mac_mini"] = mac_mini
+            except Exception:
+                pass
 
-        # Check remote Ollama (MacBook Pro)
-        try:
-            remote_ollama = OllamaProvider(base_url="http://eugenes-mbp.local:11434")
-            if remote_ollama.health_check():
-                remote_ollama.id = "ollama_remote"
-                remote_ollama.name = "Ollama (Remote - MBP)"
-                self.providers["ollama_remote"] = remote_ollama
-        except Exception:
-            pass
+        # Check local Ollama (on NUC-2 itself)
+        if ollama_url != "http://localhost:11434":  # Don't duplicate if already configured
+            try:
+                local_ollama = OllamaProvider(base_url="http://localhost:11434")
+                if local_ollama.health_check():
+                    local_ollama.id = "ollama_local"
+                    local_ollama.name = "Ollama (NUC-2 Local)"
+                    self.providers["ollama_local"] = local_ollama
+            except Exception:
+                pass
 
         # Check Google Gemini
         if os.getenv("GOOGLE_API_KEY"):
