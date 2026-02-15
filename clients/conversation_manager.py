@@ -9,7 +9,7 @@ import json
 import asyncio
 from pathlib import Path
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 
 
@@ -96,14 +96,14 @@ class ConversationManager:
                 data = {
                     "thread_id": thread_id,
                     "user_id": user_id,
-                    "created_at": datetime.utcnow().isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                     "messages": []
                 }
         else:
             data = {
                 "thread_id": thread_id,
                 "user_id": user_id,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "messages": []
             }
         
@@ -111,14 +111,14 @@ class ConversationManager:
         message = {
             "role": role,
             "content": content,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
-        
+
         if metadata:
             message["metadata"] = metadata
-        
+
         data["messages"].append(message)
-        data["updated_at"] = datetime.utcnow().isoformat()
+        data["updated_at"] = datetime.now(timezone.utc).isoformat()
         
         # Save atomically
         try:
@@ -230,7 +230,7 @@ Concise summary:"""
             summary_message = {
                 "role": "system",
                 "content": f"[Previous conversation summary]: {summary.strip()}",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "metadata": {"type": "summary", "summarized_messages": len(old_messages)}
             }
             

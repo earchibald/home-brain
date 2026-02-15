@@ -174,8 +174,8 @@ class TestHealthChecks:
         Test that missing brain folder fails startup.
 
         Verifies that:
-        - Health check detects missing brain folder
-        - RuntimeError is raised (critical failure)
+        - Initialization detects missing brain folder
+        - ValueError is raised (critical failure)
         - Startup is blocked
         - Error message indicates missing folder
         - Agent cannot proceed without brain
@@ -205,11 +205,9 @@ class TestHealthChecks:
                 mock_khoj_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
 
-                agent = SlackAgent(config)
-
-                # Health check should raise
-                with pytest.raises(RuntimeError, match="Brain"):
-                    await agent._health_check()
+                # Agent initialization should raise ValueError for missing brain path
+                with pytest.raises(ValueError, match="Brain"):
+                    agent = SlackAgent(config)
 
     @pytest.mark.asyncio
     async def test_slack_auth_failure_blocks_startup(self, test_brain_path, mock_llm, mock_khoj):
@@ -313,7 +311,7 @@ class TestHealthCheckEdgeCases:
                     assert "Ollama" in str(e) or "Slack" in str(e) or "Brain" in str(e)
 
     @pytest.mark.asyncio
-    async def test_health_check_with_missing_config(self, mock_llm, mock_khoj, mock_slack_app):
+    async def test_health_check_with_missing_config(self, test_brain_path, mock_llm, mock_khoj, mock_slack_app):
         """
         Test health check with missing configuration values.
 
@@ -323,8 +321,8 @@ class TestHealthCheckEdgeCases:
         - No crashes from None values
         """
         config = {
-            # Minimal config - most values missing
-            "brain_path": "/tmp/test_brain",
+            # Minimal config - use valid brain path
+            "brain_path": str(test_brain_path),
         }
 
         with patch.dict('os.environ', {
@@ -333,8 +331,7 @@ class TestHealthCheckEdgeCases:
         }):
             with patch('agents.slack_agent.OllamaClient') as mock_llm_class, \
                  patch('agents.slack_agent.KhojClient') as mock_khoj_class, \
-                 patch('agents.slack_agent.AsyncApp') as mock_app_class, \
-                 patch('pathlib.Path.exists', return_value=True):
+                 patch('agents.slack_agent.AsyncApp') as mock_app_class:
 
                 mock_llm_class.return_value = mock_llm
                 mock_khoj_class.return_value = mock_khoj
