@@ -34,18 +34,18 @@ def download_file_from_slack(url: str, token: str) -> bytes:
         FileDownloadError: If download fails
     """
     try:
-        # Try with Bearer token first
+        # Try with Bearer token first, allow redirects
         logger.info(f"Downloading from Slack: {url[:100]}...")
         headers = {'Authorization': f'Bearer {token}'}
-        response = requests.get(url, headers=headers, timeout=30)
+        response = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
 
         # If unauthorized, try without auth (some URLs don't need it)
         if response.status_code == 401:
-            logger.warning(f"Bearer auth failed (401), retrying without auth")
-            response = requests.get(url, timeout=30)
+            logger.warning(f"Bearer auth failed (401), retrying without auth with redirects")
+            response = requests.get(url, timeout=30, allow_redirects=True)
 
         response.raise_for_status()
-        logger.info(f"Downloaded {len(response.content)} bytes from Slack (status: {response.status_code})")
+        logger.info(f"Downloaded {len(response.content)} bytes from Slack (final status: {response.status_code}, url: {response.url[:100]})")
         return response.content
     except requests.RequestException as e:
         raise FileDownloadError(f"Failed to download file from Slack: {e}")
