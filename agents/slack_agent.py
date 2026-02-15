@@ -126,6 +126,7 @@ Be concise but thorough. If you don't know something, say so rather than making 
             file_content = ""
             if self.enable_file_attachments:
                 attachments = detect_file_attachments(event)
+                self.logger.info(f"File attachments detected: {len(attachments)}")
                 for attachment in attachments:
                     try:
                         file_content += await self._process_file_attachment(
@@ -215,13 +216,17 @@ Be concise but thorough. If you don't know something, say so rather than making 
         file_type = attachment.get("type", "")
         url = attachment.get("url_private_download", "")
 
+        self.logger.info(f"Processing attachment: {file_name}, type: {file_type}, has_url: {bool(url)}")
+
         if not url or not file_type:
             self.logger.warning(f"Missing URL or type for attachment {file_name}")
             return ""
 
         try:
             # Download file from Slack
+            self.logger.info(f"Downloading {file_name} from Slack...")
             file_content = download_file_from_slack(url, token=self.bot_token)
+            self.logger.info(f"Downloaded {file_name}, extracting text...")
 
             # Extract text content
             text = extract_text_content(file_content, file_type=file_type)
