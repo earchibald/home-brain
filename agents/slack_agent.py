@@ -108,9 +108,14 @@ Be concise but thorough. If you don't know something, say so rather than making 
         async def handle_message(event, say, client):
             """Handle incoming DM messages"""
 
-            # Ignore bot messages and threaded replies to avoid loops
+            # Ignore bot messages, but allow whitelisted test bots for E2E testing
             if event.get("subtype") == "bot_message":
-                return
+                allowed_bot_ids = os.getenv("ALLOWED_TEST_BOT_IDS", "").split(",")
+                bot_id = event.get("bot_id", "")
+                # Filter out empty strings from split
+                allowed_bot_ids = [b.strip() for b in allowed_bot_ids if b.strip()]
+                if bot_id not in allowed_bot_ids or not bot_id:
+                    return
 
             # Only respond to DMs (channel type = "im")
             channel_type = event.get("channel_type")
