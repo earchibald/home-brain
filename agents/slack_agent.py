@@ -146,8 +146,10 @@ You're not just answering questions—you're helping build and navigate a system
         # Initialize model manager for dynamic provider switching
         self.model_manager = ModelManager()
         self.enable_model_switching = config.get("enable_model_switching", False)
+        self.ollama_url = config.get("ollama_url")  # Store for /model command
         if self.enable_model_switching:
-            self.model_manager.discover_available_sources()
+            # Pass configured Ollama URL for discovery
+            self.model_manager.discover_available_sources(ollama_url=self.ollama_url)
             self.logger.info(
                 f"Model switching enabled. Available providers: {list(self.model_manager.providers.keys())}"
             )
@@ -285,8 +287,8 @@ You're not just answering questions—you're helping build and navigate a system
                 return
 
             try:
-                # Refresh provider discovery
-                self.model_manager.discover_available_sources()
+                # Refresh provider discovery with configured Ollama URL
+                self.model_manager.discover_available_sources(ollama_url=self.ollama_url)
 
                 # Build UI
                 blocks = build_model_selector_ui(self.model_manager)

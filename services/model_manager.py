@@ -26,16 +26,31 @@ class ModelManager:
         self.current_provider_id: Optional[str] = None
         self.current_model_name: Optional[str] = None
 
-    def discover_available_sources(self):
+    def discover_available_sources(self, ollama_url: str = None):
         """
         Discover and register available LLM providers.
 
+        Args:
+            ollama_url: Optional Ollama URL from config (e.g., from OLLAMA_URL env var)
+
         Checks:
+        - Configured Ollama (if ollama_url provided)
         - Local Ollama (localhost:11434)
         - Remote Ollama (eugenes-mbp.local:11434)
         - Google Gemini API (if GOOGLE_API_KEY is set)
         - Anthropic Claude API (if ANTHROPIC_API_KEY is set)
         """
+        # Check configured Ollama URL first (from config)
+        if ollama_url:
+            try:
+                configured_ollama = OllamaProvider(base_url=ollama_url)
+                if configured_ollama.health_check():
+                    configured_ollama.id = "ollama_configured"
+                    configured_ollama.name = f"Ollama (Configured)"
+                    self.providers["ollama_configured"] = configured_ollama
+            except Exception:
+                pass
+
         # Check local Ollama
         try:
             local_ollama = OllamaProvider(base_url="http://localhost:11434")
@@ -44,7 +59,7 @@ class ModelManager:
         except Exception:
             pass
 
-        # Check remote Ollama
+        # Check remote Ollama (MacBook Pro)
         try:
             remote_ollama = OllamaProvider(base_url="http://eugenes-mbp.local:11434")
             if remote_ollama.health_check():
