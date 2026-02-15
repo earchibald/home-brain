@@ -44,9 +44,9 @@ class DeploymentValidator:
 
     def run_all_checks(self):
         """Run all validation checks."""
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("🔍 DEPLOYMENT VALIDATION")
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
 
         # Local checks
         self.check_project_structure()
@@ -167,6 +167,7 @@ class DeploymentValidator:
         # Try importing pytest
         try:
             import pytest
+
             print(f"  ✓ pytest installed: {pytest.__version__}")
             self.checks_passed += 1
         except ImportError:
@@ -181,7 +182,7 @@ class DeploymentValidator:
                 ["pytest", "--collect-only", "tests/"],
                 cwd=self.project_root,
                 capture_output=True,
-                timeout=10
+                timeout=10,
             )
 
             if result.returncode == 0:
@@ -213,7 +214,7 @@ class DeploymentValidator:
             result = subprocess.run(
                 ["ssh", "-o", "ConnectTimeout=3", "nuc-2", "echo", "ok"],
                 capture_output=True,
-                timeout=5
+                timeout=5,
             )
 
             if result.returncode == 0:
@@ -240,12 +241,9 @@ class DeploymentValidator:
 
         try:
             result = subprocess.run(
-                [
-                    "ssh", "nuc-2",
-                    "sudo", "systemctl", "is-active", "brain-slack-bot"
-                ],
+                ["ssh", "nuc-2", "sudo", "systemctl", "is-active", "brain-slack-bot"],
                 capture_output=True,
-                timeout=5
+                timeout=5,
             )
 
             if result.returncode == 0:
@@ -267,9 +265,9 @@ class DeploymentValidator:
         total = self.checks_passed + self.checks_failed
         percentage = (self.checks_passed / total * 100) if total > 0 else 0
 
-        print("="*60)
+        print("=" * 60)
         print("📊 VALIDATION SUMMARY")
-        print("="*60)
+        print("=" * 60)
         print(f"\n✓ Passed: {self.checks_passed}/{total}")
         print(f"✗ Failed: {self.checks_failed}/{total}")
         print(f"Success Rate: {percentage:.0f}%\n")
@@ -280,7 +278,9 @@ class DeploymentValidator:
             print("  1. Run tests locally: pytest tests/ -v")
             print("  2. Start test script: python test_slack_bot_manual.py")
             print("  3. Send test messages in Slack")
-            print("  4. Check NUC-2 logs: ssh nuc-2 && sudo journalctl -u brain-slack-bot -f")
+            print(
+                "  4. Check NUC-2 logs: ssh nuc-2 && sudo journalctl -u brain-slack-bot -f"
+            )
         else:
             print("❌ DEPLOYMENT VALIDATION FAILED")
             print("\nPlease fix the issues above before testing.")

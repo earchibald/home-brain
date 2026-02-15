@@ -43,10 +43,7 @@ class TestConversationManager:
 
         # Save a message
         await manager.save_message(
-            user_id=user_id,
-            thread_id=thread_id,
-            role="user",
-            content=test_content
+            user_id=user_id, thread_id=thread_id, role="user", content=test_content
         )
 
         # Load the conversation
@@ -60,7 +57,9 @@ class TestConversationManager:
         assert isinstance(messages[0]["timestamp"], str)
 
     @pytest.mark.asyncio
-    async def test_multi_turn_conversation_preserved(self, test_brain_path, sample_conversation):
+    async def test_multi_turn_conversation_preserved(
+        self, test_brain_path, sample_conversation
+    ):
         """
         Test that multi-turn conversations preserve full history and order.
 
@@ -85,7 +84,7 @@ class TestConversationManager:
                 user_id=user_id,
                 thread_id=thread_id,
                 role=msg["role"],
-                content=msg["content"]
+                content=msg["content"],
             )
 
         # Load and verify
@@ -122,14 +121,14 @@ class TestConversationManager:
             user_id=user1_id,
             thread_id=thread_id,
             role="user",
-            content="Message from user 1"
+            content="Message from user 1",
         )
 
         await manager.save_message(
             user_id=user2_id,
             thread_id=thread_id,
             role="user",
-            content="Message from user 2"
+            content="Message from user 2",
         )
 
         # Load conversations
@@ -164,14 +163,19 @@ class TestConversationManager:
         short_tokens = manager.estimate_tokens(short_text)
         assert short_tokens >= 1
 
-        long_text = "This is a much longer message with more content to estimate tokens from"
+        long_text = (
+            "This is a much longer message with more content to estimate tokens from"
+        )
         long_tokens = manager.estimate_tokens(long_text)
         assert long_tokens > short_tokens
 
         # Test conversation token counting
         messages = [
             {"role": "user", "content": "What is AI?"},
-            {"role": "assistant", "content": "AI is artificial intelligence, a field of computer science."},
+            {
+                "role": "assistant",
+                "content": "AI is artificial intelligence, a field of computer science.",
+            },
             {"role": "user", "content": "Tell me more"},
         ]
 
@@ -180,8 +184,7 @@ class TestConversationManager:
 
         # Verify it sums correctly (roughly)
         individual_sum = sum(
-            manager.estimate_tokens(msg["content"])
-            for msg in messages
+            manager.estimate_tokens(msg["content"]) for msg in messages
         )
         assert total_tokens == individual_sum
 
@@ -202,7 +205,9 @@ class TestConversationManager:
         """
         # Create mock LLM client
         mock_llm = AsyncMock()
-        mock_llm.complete = AsyncMock(return_value="Summary of previous conversation: key points discussed")
+        mock_llm.complete = AsyncMock(
+            return_value="Summary of previous conversation: key points discussed"
+        )
 
         manager = ConversationManager(str(test_brain_path), llm_client=mock_llm)
 
@@ -219,7 +224,7 @@ class TestConversationManager:
         result = await manager.summarize_if_needed(
             messages=messages,
             max_tokens=500,  # Low limit to force summarization
-            keep_recent=1
+            keep_recent=1,
         )
 
         # Verify summarization occurred
@@ -242,7 +247,9 @@ class TestConversationManager:
             test_brain_path: Fixture providing temporary brain directory
         """
         mock_llm = AsyncMock()
-        mock_llm.complete = AsyncMock(return_value="User discussed ADHD strategies and time management")
+        mock_llm.complete = AsyncMock(
+            return_value="User discussed ADHD strategies and time management"
+        )
 
         manager = ConversationManager(str(test_brain_path), llm_client=mock_llm)
 
@@ -253,9 +260,7 @@ class TestConversationManager:
         ]
 
         result = await manager.summarize_if_needed(
-            messages=messages,
-            max_tokens=200,
-            keep_recent=1
+            messages=messages, max_tokens=200, keep_recent=1
         )
 
         # Verify structure
@@ -292,17 +297,11 @@ class TestConversationManager:
         # Create multiple concurrent write tasks
         async def save_message(role, content):
             await manager.save_message(
-                user_id=user_id,
-                thread_id=thread_id,
-                role=role,
-                content=content
+                user_id=user_id, thread_id=thread_id, role=role, content=content
             )
 
         # Save 5 messages concurrently
-        tasks = [
-            save_message("user", f"Message {i}")
-            for i in range(5)
-        ]
+        tasks = [save_message("user", f"Message {i}") for i in range(5)]
         await asyncio.gather(*tasks)
 
         # Load and verify all messages saved
@@ -345,7 +344,7 @@ class TestConversationManager:
             user_id=user_id,
             thread_id=thread_id,
             role="user",
-            content="Recovered message"
+            content="Recovered message",
         )
 
         # Verify new message saved correctly
@@ -359,7 +358,9 @@ class TestConversationManagerIntegration:
     """Integration tests for ConversationManager with realistic workflows"""
 
     @pytest.mark.asyncio
-    async def test_full_conversation_workflow(self, test_brain_path, sample_conversation):
+    async def test_full_conversation_workflow(
+        self, test_brain_path, sample_conversation
+    ):
         """
         Test complete workflow: save multi-turn conversation and retrieve it.
 
@@ -383,7 +384,7 @@ class TestConversationManagerIntegration:
                 user_id=user_id,
                 thread_id=thread_id,
                 role=msg["role"],
-                content=msg["content"]
+                content=msg["content"],
             )
 
         # Later, retrieve for context
@@ -418,7 +419,7 @@ class TestConversationManagerIntegration:
                     user_id=user_id,
                     thread_id=thread_id,
                     role="user" if i % 2 == 0 else "assistant",
-                    content=f"Message {i} in thread {thread_num}"
+                    content=f"Message {i} in thread {thread_num}",
                 )
 
         # List conversations

@@ -37,14 +37,15 @@ class TestOllamaClient:
         """
         messages = [
             Message(role="user", content="What is ADHD?"),
-            Message(role="assistant", content="ADHD is a neurodevelopmental disorder..."),
+            Message(
+                role="assistant", content="ADHD is a neurodevelopmental disorder..."
+            ),
             Message(role="user", content="How can I manage it?"),
         ]
 
         # Call mock LLM
         response = await mock_llm.chat(
-            messages=messages,
-            system_prompt="You are a helpful assistant"
+            messages=messages, system_prompt="You are a helpful assistant"
         )
 
         # Verify response
@@ -68,7 +69,7 @@ class TestOllamaClient:
         Simulates various Ollama response formats.
         """
         # Mock httpx to return Ollama API response
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -79,9 +80,9 @@ class TestOllamaClient:
                 "model": "llama3.2",
                 "message": {
                     "role": "assistant",
-                    "content": "This is the parsed response from Ollama."
+                    "content": "This is the parsed response from Ollama.",
                 },
-                "done": True
+                "done": True,
             }
             mock_client.post = AsyncMock(return_value=mock_response)
 
@@ -109,7 +110,7 @@ class TestOllamaClient:
 
         Simulates network failure scenarios.
         """
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -141,7 +142,7 @@ class TestOllamaClient:
 
         Simulates slow/unresponsive Ollama server.
         """
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -173,7 +174,7 @@ class TestOllamaClient:
 
         Tests vector generation for semantic search.
         """
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -190,8 +191,7 @@ class TestOllamaClient:
 
             # Generate embeddings
             embedding = await client.embeddings(
-                text="Sample text for embedding",
-                model="nomic-embed-text"
+                text="Sample text for embedding", model="nomic-embed-text"
             )
 
             # Verify
@@ -212,7 +212,7 @@ class TestOllamaClient:
 
         Tests basic connectivity verification.
         """
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -246,7 +246,7 @@ class TestOllamaClientIntegration:
         2. Client generates response
         3. Response is formatted and returned
         """
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -263,7 +263,7 @@ class TestOllamaClientIntegration:
             result = await client.complete(
                 prompt="What is artificial intelligence?",
                 model="llama3.2",
-                max_tokens=500
+                max_tokens=500,
             )
 
             assert "generated response" in result
@@ -278,7 +278,7 @@ class TestOllamaClientIntegration:
         2. Multiple user/assistant messages preserved
         3. Correct response generated
         """
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -287,7 +287,7 @@ class TestOllamaClientIntegration:
             mock_response.json.return_value = {
                 "message": {
                     "role": "assistant",
-                    "content": "Based on our conversation, here's my advice..."
+                    "content": "Based on our conversation, here's my advice...",
                 }
             }
             mock_client.post = AsyncMock(return_value=mock_response)
@@ -302,9 +302,7 @@ class TestOllamaClientIntegration:
             ]
 
             result = await client.chat(
-                messages=messages,
-                system_prompt="You are an ADHD coach",
-                max_tokens=500
+                messages=messages, system_prompt="You are an ADHD coach", max_tokens=500
             )
 
             assert "advice" in result.lower()
@@ -316,7 +314,7 @@ class TestOllamaClientIntegration:
 
         Uses advice() method with context from brain.
         """
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -325,7 +323,7 @@ class TestOllamaClientIntegration:
             mock_response.json.return_value = {
                 "message": {
                     "role": "assistant",
-                    "content": "Try breaking tasks into 15-minute blocks with 5-minute breaks."
+                    "content": "Try breaking tasks into 15-minute blocks with 5-minute breaks.",
                 }
             }
             mock_client.post = AsyncMock(return_value=mock_response)
@@ -336,7 +334,7 @@ class TestOllamaClientIntegration:
             advice = await client.advice(
                 topic="time management",
                 context="User has ADHD and struggles with procrastination",
-                specialization="ADHD"
+                specialization="ADHD",
             )
 
             assert "15-minute" in advice or "advice" in advice.lower()
@@ -348,7 +346,7 @@ class TestOllamaClientIntegration:
 
         Tests the summarize() method for conversation compression.
         """
-        with patch('httpx.AsyncClient') as mock_client_class:
+        with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -362,17 +360,18 @@ class TestOllamaClientIntegration:
             client = OllamaClient(base_url="http://test:11434")
             client.client = mock_client
 
-            long_text = """
+            long_text = (
+                """
             User asked about time management techniques for ADHD.
             Assistant discussed the Pomodoro technique, time blocking, and daily planning.
             User mentioned they struggle with procrastination.
             Assistant recommended starting with 15-minute work blocks.
-            """ * 10
+            """
+                * 10
+            )
 
             summary = await client.summarize(
-                text=long_text,
-                length="medium",
-                focus="ADHD time management"
+                text=long_text, length="medium", focus="ADHD time management"
             )
 
             assert len(summary) > 0

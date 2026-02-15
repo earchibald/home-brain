@@ -3,7 +3,6 @@ Streaming handler for processing chunks from Ollama and finalizing responses.
 """
 
 
-
 def process_stream_chunk(chunk: str) -> str:
     """
     Process a single chunk from the streaming response.
@@ -33,7 +32,7 @@ def finalize_stream_response(partial_content: str) -> str:
     content = partial_content.strip()
 
     # Remove any incomplete token markers
-    if content.endswith('[['):
+    if content.endswith("[["):
         content = content[:-2]
 
     return content

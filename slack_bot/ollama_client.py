@@ -22,10 +22,7 @@ class OllamaStreamingClient:
         self.base_url = base_url
 
     def generate(
-        self,
-        prompt: str,
-        stream: bool = False,
-        **kwargs
+        self, prompt: str, stream: bool = False, **kwargs
     ) -> Optional[Generator[str, None, None]]:
         """
         Generate response from Ollama with optional streaming.
@@ -40,11 +37,7 @@ class OllamaStreamingClient:
         """
         url = f"{self.base_url}/api/generate"
 
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": stream
-        }
+        payload = {"model": self.model, "prompt": prompt, "stream": stream}
 
         response = requests.post(url, json=payload, stream=stream)
 
@@ -54,9 +47,7 @@ class OllamaStreamingClient:
             data = response.json()
             return data.get("response", "")
 
-    def _parse_streaming_response(
-        self, response
-    ) -> Generator[str, None, None]:
+    def _parse_streaming_response(self, response) -> Generator[str, None, None]:
         """Parse streaming response from Ollama."""
         for line in response.iter_lines():
             if line:
@@ -81,11 +72,7 @@ class OllamaClient:
         self.base_url = base_url
 
     def generate(
-        self,
-        prompt: str,
-        stream: bool = False,
-        fallback: bool = False,
-        **kwargs
+        self, prompt: str, stream: bool = False, fallback: bool = False, **kwargs
     ) -> Optional[str]:
         """
         Generate response from Ollama with optional fallback.
@@ -104,11 +91,7 @@ class OllamaClient:
         # Try streaming first if requested
         if stream and fallback:
             try:
-                payload = {
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": True
-                }
+                payload = {"model": self.model, "prompt": prompt, "stream": True}
                 response = requests.post(url, json=payload, stream=True, timeout=30)
 
                 # Accumulate streaming response
@@ -123,11 +106,7 @@ class OllamaClient:
                 pass
 
         # Non-streaming request
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False
-        }
+        payload = {"model": self.model, "prompt": prompt, "stream": False}
         response = requests.post(url, json=payload, timeout=30)
         data = response.json()
         return data.get("response", "")

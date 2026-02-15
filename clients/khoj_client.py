@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SearchResult:
     """Represents a single search result from Khoj"""
+
     entry: str
     score: float
     file: str
@@ -42,24 +43,21 @@ class KhojClient:
             self.client = httpx.AsyncClient(timeout=self.timeout)
 
     async def search(
-        self, 
-        query: str, 
-        content_type: str = "markdown",
-        limit: int = 5
+        self, query: str, content_type: str = "markdown", limit: int = 5
     ) -> List[SearchResult]:
         """
         Search brain content via Khoj
-        
+
         Args:
             query: Search query (natural language)
             content_type: markdown, plaintext, or pdf
             limit: Max results to return
-            
+
         Returns:
             List of SearchResult objects
         """
         await self._ensure_client()
-        
+
         try:
             url = f"{self.base_url}/api/search"
             params = {
@@ -67,31 +65,33 @@ class KhojClient:
                 "type": content_type,
                 "limit": limit,
             }
-            
+
             response = await self.client.get(url, params=params)
             response.raise_for_status()
-            
+
             data = response.json()
             if not data:
                 return []
-            
+
             results = []
             for item in data:
                 try:
-                    results.append(SearchResult(
-                        entry=item.get("entry", ""),
-                        score=item.get("score", 0),
-                        file=item.get("additional", {}).get("file", ""),
-                        heading=item.get("additional", {}).get("heading", ""),
-                        corpus_id=item.get("corpus_id", ""),
-                    ))
+                    results.append(
+                        SearchResult(
+                            entry=item.get("entry", ""),
+                            score=item.get("score", 0),
+                            file=item.get("additional", {}).get("file", ""),
+                            heading=item.get("additional", {}).get("heading", ""),
+                            corpus_id=item.get("corpus_id", ""),
+                        )
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to parse search result: {e}")
                     continue
-            
+
             logger.info(f"Search query '{query}' returned {len(results)} results")
             return results
-            
+
         except httpx.HTTPError as e:
             logger.error(f"Khoj search error: {e}")
             return []
@@ -100,65 +100,61 @@ class KhojClient:
             return []
 
     async def search_by_folder(
-        self,
-        query: str,
-        folder: str,
-        content_type: str = "markdown"
+        self, query: str, folder: str, content_type: str = "markdown"
     ) -> List[SearchResult]:
         """
         Search within a specific brain folder
-        
+
         Args:
             query: Search query
             folder: Folder name (e.g., "journal", "work", "learning")
             content_type: markdown, plaintext, or pdf
-            
+
         Returns:
             List of SearchResult objects from that folder
         """
         all_results = await self.search(query, content_type)
-        
+
         # Filter results by folder path
         filtered = [
-            r for r in all_results 
+            r
+            for r in all_results
             if f"/{folder}/" in r.file or r.file.endswith(f"/{folder}")
         ]
-        
+
         return filtered
 
     async def get_recent_activity(
-        self,
-        hours: int = 24,
-        folder: Optional[str] = None
+        self, hours: int = 24, folder: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Get a summary of recent brain activity
-        
+
         Args:
             hours: How many hours back to look
             folder: Optional folder to filter
-            
+
         Returns:
             Dict with activity stats
         """
         # Query for recent files (this is a heuristic search)
         query = "recent created modified updated"
         results = await self.search(query, limit=20)
-        
+
         if folder:
             results = [r for r in results if f"/{folder}/" in r.file]
-        
+
         return {
             "total_results": len(results),
             "topics": list(set(r.heading.split("/")[0] for r in results)),
             "files": [r.file for r in results],
-            "recent_activity": results[:5]
+            "recent_activity": results[:5],
         }
 
     async def health_check(self) -> bool:
         """Check if Khoj is reachable and healthy"""
         await self._ensure_client()
-        
+
         try:
             response = await self.client.get(f"{self.base_url}/api/settings")
             return response.status_code == 200

@@ -18,22 +18,22 @@ def detect_file_attachments(message_data: Dict[str, Any]) -> List[Dict[str, Any]
     """
     attachments = []
 
-    files = message_data.get('files', [])
+    files = message_data.get("files", [])
     for file_obj in files:
-        file_name = file_obj.get('name', '')
+        file_name = file_obj.get("name", "")
         if not file_name:
             continue
 
         # Extract file extension
         _, ext = os.path.splitext(file_name)
-        file_type = ext.lstrip('.').lower() if ext else ''
+        file_type = ext.lstrip(".").lower() if ext else ""
 
         attachment = {
-            'name': file_name,
-            'type': file_type,
-            'url_private_download': file_obj.get('url_private_download'),
-            'mimetype': file_obj.get('mimetype'),
-            'size': file_obj.get('size', 0),
+            "name": file_name,
+            "type": file_type,
+            "url_private_download": file_obj.get("url_private_download"),
+            "mimetype": file_obj.get("mimetype"),
+            "size": file_obj.get("size", 0),
         }
         attachments.append(attachment)
 

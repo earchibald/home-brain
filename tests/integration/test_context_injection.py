@@ -18,24 +18,26 @@ import sys
 from pathlib import Path
 
 # Set test brain path before ANY imports
-test_brain_path = Path(__file__).parent.parent / 'test_brain'
+test_brain_path = Path(__file__).parent.parent / "test_brain"
 test_brain_path.mkdir(parents=True, exist_ok=True)
-(test_brain_path / 'users').mkdir(parents=True, exist_ok=True)
+(test_brain_path / "users").mkdir(parents=True, exist_ok=True)
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Mock brain_io module BEFORE importing anything that depends on agent_platform
 mock_brain_io = MagicMock()
 mock_brain_io.BrainIO = MagicMock(return_value=MagicMock())
-sys.modules['brain_io'] = mock_brain_io
+sys.modules["brain_io"] = mock_brain_io
 
 # Now we can import llm_client and SlackAgent
 from clients.llm_client import Message  # noqa: E402
 
+
 def get_slack_agent():
     """Lazy import to ensure mocks are in place"""
-    with patch('agents.slack_agent.BrainIO'):
+    with patch("agents.slack_agent.BrainIO"):
         from agents.slack_agent import SlackAgent
+
         return SlackAgent
 
 
@@ -54,7 +56,7 @@ class TestKhojContextInjection:
             "max_context_tokens": 6000,
             "enable_khoj_search": True,
             "max_search_results": 3,
-            "notification": {"enabled": False}
+            "notification": {"enabled": False},
         }
 
     @pytest.fixture
@@ -66,7 +68,7 @@ class TestKhojContextInjection:
     @pytest.fixture
     async def agent_with_mocks(self, agent_config, mock_env, mock_khoj, mock_llm):
         """Create SlackAgent with mocked dependencies"""
-        with patch('agents.slack_agent.AsyncApp'):
+        with patch("agents.slack_agent.AsyncApp"):
             SlackAgent = get_slack_agent()
             agent = SlackAgent(agent_config)
             agent.khoj = mock_khoj
@@ -115,7 +117,7 @@ class TestKhojContextInjection:
             return_value=[
                 {
                     "snippet": "ADHD management includes time blocking and body doubling",
-                    "file": "journal/2026-02-10.md"
+                    "file": "journal/2026-02-10.md",
                 }
             ]
         )
@@ -156,18 +158,18 @@ class TestKhojContextInjection:
             {
                 "snippet": "Time blocking helps with ADHD executive function and task initiation",
                 "file": "journal/2026-02-10.md",
-                "score": 0.95
+                "score": 0.95,
             },
             {
                 "snippet": "Body doubling and accountability partners improve follow-through",
                 "file": "journal/2026-02-08.md",
-                "score": 0.87
+                "score": 0.87,
             },
             {
                 "snippet": "Breaking tasks into micro-steps reduces overwhelm",
                 "file": "work/projects/productivity.md",
-                "score": 0.82
-            }
+                "score": 0.82,
+            },
         ]
 
         agent.khoj.search = AsyncMock(return_value=khoj_results)
@@ -189,9 +191,11 @@ class TestKhojContextInjection:
         user_message = messages[-1]
         assert isinstance(user_message, Message)
         # Context should be included with citations
-        assert "Relevant context from your brain" in user_message.content or \
-               "journal/2026-02-10.md" in user_message.content or \
-               query in user_message.content
+        assert (
+            "Relevant context from your brain" in user_message.content
+            or "journal/2026-02-10.md" in user_message.content
+            or query in user_message.content
+        )
 
     # ========================================================================
     # Test Case 3: Khoj unavailable degrades gracefully
@@ -216,9 +220,7 @@ class TestKhojContextInjection:
         agent.conversations.summarize_if_needed.return_value = []
 
         # Mock Khoj to raise exception
-        agent.khoj.search = AsyncMock(
-            side_effect=Exception("Khoj connection failed")
-        )
+        agent.khoj.search = AsyncMock(side_effect=Exception("Khoj connection failed"))
 
         agent.llm.chat = AsyncMock(return_value="Response without brain context")
 
@@ -260,7 +262,7 @@ class TestKhojContextInjection:
         khoj_results = [
             {
                 "snippet": "Brain entry about productivity systems",
-                "file": "journal/2026-02-10.md"
+                "file": "journal/2026-02-10.md",
             }
         ]
 
@@ -308,9 +310,7 @@ class TestKhojContextInjection:
         agent.conversations.summarize_if_needed.return_value = []
         agent.conversations.save_message = AsyncMock()
 
-        khoj_results = [
-            {"snippet": "Brain entry", "file": "journal/2026-02-10.md"}
-        ]
+        khoj_results = [{"snippet": "Brain entry", "file": "journal/2026-02-10.md"}]
 
         agent.khoj.search = AsyncMock(return_value=khoj_results)
         agent.llm.chat = AsyncMock(return_value="Response with context")
@@ -324,9 +324,7 @@ class TestKhojContextInjection:
         # Check save_message calls for assistant response
         save_calls = agent.conversations.save_message.call_args_list
         # Should have at least the user message and response message
-        [
-            call for call in save_calls if "assistant" in str(call)
-        ]
+        [call for call in save_calls if "assistant" in str(call)]
 
         # Verify at least one save call has context_used in metadata
         found_context_used = False

@@ -2,6 +2,7 @@
 RED tests for performance alerts and monitoring functionality.
 These tests are expected to fail initially as the feature is not yet implemented.
 """
+
 import pytest
 from unittest.mock import Mock, patch
 
@@ -14,23 +15,22 @@ def test_slow_response_alert_sent():
     mock_slack_client = Mock()
 
     monitor = PerformanceMonitor(
-        slow_threshold_seconds=5.0,
-        slack_client=mock_slack_client
+        slow_threshold_seconds=5.0, slack_client=mock_slack_client
     )
 
-    with patch('slack_bot.alerting.send_performance_alert') as mock_alert:
+    with patch("slack_bot.alerting.send_performance_alert") as mock_alert:
         # Simulate a slow response (6 seconds)
         monitor.record_response_time(
-            request_id='req123',
+            request_id="req123",
             duration_seconds=6.0,
-            user_id='U123456',
-            channel_id='C123456'
+            user_id="U123456",
+            channel_id="C123456",
         )
 
         # Alert should be sent
         mock_alert.assert_called_once()
         call_args = mock_alert.call_args[0]
-        assert 'slow' in str(call_args).lower() or 'threshold' in str(call_args).lower()
+        assert "slow" in str(call_args).lower() or "threshold" in str(call_args).lower()
 
 
 @pytest.mark.red
@@ -45,8 +45,7 @@ def test_latency_histogram_tracked():
 
     for latency in latencies:
         monitor.record_response_time(
-            request_id=f'req{latencies.index(latency)}',
-            duration_seconds=latency
+            request_id=f"req{latencies.index(latency)}", duration_seconds=latency
         )
 
     # Get histogram
@@ -55,7 +54,7 @@ def test_latency_histogram_tracked():
     assert histogram is not None
     assert len(histogram) > 0
     # Histogram should have buckets
-    assert 'buckets' in histogram or 'data' in histogram
+    assert "buckets" in histogram or "data" in histogram
 
 
 @pytest.mark.red
@@ -69,10 +68,7 @@ def test_average_latency_calculated():
     latencies = [1.0, 2.0, 3.0, 4.0, 5.0]
 
     for i, latency in enumerate(latencies):
-        monitor.record_response_time(
-            request_id=f'req{i}',
-            duration_seconds=latency
-        )
+        monitor.record_response_time(request_id=f"req{i}", duration_seconds=latency)
 
     # Get average
     avg = monitor.get_average_latency()
@@ -94,10 +90,7 @@ def test_p95_latency_tracked():
     latencies = [i * 0.1 for i in range(1, 101)]  # 0.1 to 10.0 seconds
 
     for i, latency in enumerate(latencies):
-        monitor.record_response_time(
-            request_id=f'req{i}',
-            duration_seconds=latency
-        )
+        monitor.record_response_time(request_id=f"req{i}", duration_seconds=latency)
 
     # Get P95
     p95 = monitor.get_p95_latency()
