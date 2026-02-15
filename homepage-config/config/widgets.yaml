@@ -1,19 +1,18 @@
-- clock:
-    format: "hh:mm A"
-    timezone: "America/New_York"
+---
+# Information widgets appear at the top of the homepage
+- logo:
+    icon: mdi-home
+
+- datetime:
+    text_size: xl
+    format:
+      dateStyle: short
+      timeStyle: short
+      hourCycle: h12
 
 - search:
-    provider: "duckduckgo"
-    target: "_blank"
+    provider: duckduckgo
+    target: _blank
 
-- unifi_controller:
-    widget:
-      type: unifi
-      url: https://nuc-1.local:8443
-      username: "YOUR_USERNAME"
-      password: "YOUR_PASSWORD"
-
-- caddy:
-    url: http://nuc-1.local:2019
 
 

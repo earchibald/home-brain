@@ -4,32 +4,27 @@
             href: "http://nuc-1.local:3000"
             description: "Homepage Dashboard"
             ping: "http://nuc-1.local:3000"
-        - "Portainer":
-            href: "http://nuc-1.local:9000"
-            description: "Docker Management"
-            ping: "http://nuc-1.local:9000"
-        - "Unifi":
-            href: "https://nuc-1.local:8443/manage/account/login?redirect=%2Fmanage"
-            description: "Unifi Controller"
-            ping: "https://nuc-1.local:8443"
         - "Vaultwarden":
             href: "https://vault.nuc-1.local"
             description: "Password Manager"
             ping: "https://vault.nuc-1.local"
+        - "Semantic Search":
+            href: "http://nuc-1.local:42110"
+            description: "Brain Semantic Search API"
+            ping: "http://nuc-1.local:42110"
 
-- "Agents":
-    - "nuc-2":
-        - "Agent Framework":
-            href: "http://nuc-2.local:8000"
-            description: "Agent Framework on nuc-2"
-            ping: "http://nuc-2.local:8000"
-    - "nuc-3":
-        - "Agent Framework":
-            href: "http://nuc-3.local:8000"
-            description: "Agent Framework on nuc-3"
-            ping: "http://nuc-3.local:8000"
-    - "m1-mini":
-        - "Agent Framework":
-            href: "http://m1-mini.local:8000"
-            description: "Agent Framework on m1-mini"
-            ping: "http://m1-mini.local:8000"
+- "Storage & Sync":
+    - "Syncthing":
+        - "NUC-1":
+            href: "http://nuc-1.local:8384"
+            description: "Syncthing on NUC-1"
+            ping: "http://nuc-1.local:8384"
+        - "NUC-2":
+            href: "http://nuc-2.local:8384"
+            description: "Syncthing on NUC-2"
+            ping: "http://nuc-2.local:8384"
+        - "NUC-3":
+            href: "http://nuc-3.local:8384"
+            description: "Syncthing on NUC-3"
+            ping: "http://nuc-3.local:8384"
+

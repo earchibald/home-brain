@@ -25,13 +25,12 @@ def build_model_selector_ui(manager: ModelManager) -> List[Dict]:
     if config["provider_id"]:
         status_text = (
             f"*Current Selection:* 🟢 {config['provider_name']} "
-            f"(`{config['model_name']}`)\n"
-            f"_Note: Phase 1 - Selection is saved but not yet used for inference_"
+            f"(`{config['model_name']}`)"
         )
     else:
         status_text = (
             "*Current Selection:* ⚪ No model selected\n"
-            f"_Note: Bot is using default Ollama model. Selection here is for future use._"
+            f"_Using default: {manager.providers.get('ollama_configured', {}).get('name', 'Ollama')} - llama3.2:latest_"
         )
 
     blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": status_text}})
