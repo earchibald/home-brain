@@ -18,12 +18,15 @@ from llm_client import OllamaClient
 from brain_io import BrainIO
 
 # Configure logging
+log_dir = Path(__file__).parent / "logs"
+log_dir.mkdir(exist_ok=True)  # Ensure logs directory exists
+
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] %(levelname)s - %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(Path(__file__).parent / "logs" / "agent_platform.log"),
+        logging.FileHandler(log_dir / "agent_platform.log"),
     ],
 )
 
