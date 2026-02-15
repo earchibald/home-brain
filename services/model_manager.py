@@ -55,15 +55,27 @@ class ModelManager:
             except Exception:
                 pass
 
-        # Check Mac Mini Ollama (should be different from configured)
-        mac_mini_url = "http://m1-mini.local:11434"
-        if mac_mini_url != ollama_url:  # Don't check if it's already the configured one
+        # Check M4 Pro Laptop (eugenes-mbp)
+        laptop_url = "http://eugenes-mbp.local:11434"
+        if laptop_url != ollama_url:  # Don't check if it's already the configured one
             try:
-                mac_mini = OllamaProvider(base_url=mac_mini_url)
-                if mac_mini.health_check():
-                    mac_mini.id = "ollama_mac_mini"
-                    mac_mini.name = "Ollama (Mac Mini - m1-mini.local)"
-                    self.providers["ollama_mac_mini"] = mac_mini
+                laptop = OllamaProvider(base_url=laptop_url)
+                if laptop.health_check():
+                    laptop.id = "ollama_laptop"
+                    laptop.name = "Ollama (M4 Pro Laptop - eugenes-mbp.local)"
+                    self.providers["ollama_laptop"] = laptop
+            except Exception:
+                pass
+
+        # Check M1 Mac Mini (m1-mini)
+        m1_mini_url = "http://m1-mini.local:11434"
+        if m1_mini_url != ollama_url:  # Don't check if it's already the configured one
+            try:
+                m1_mini = OllamaProvider(base_url=m1_mini_url)
+                if m1_mini.health_check():
+                    m1_mini.id = "ollama_m1_mini"
+                    m1_mini.name = "Ollama (M1 Mac Mini - m1-mini.local)"
+                    self.providers["ollama_m1_mini"] = m1_mini
             except Exception:
                 pass
 
