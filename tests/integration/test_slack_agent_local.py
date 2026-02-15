@@ -9,15 +9,11 @@ Tests for core Slack agent message handling behavior including:
 """
 
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch, call
-from typing import Dict, Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Add parent directories to path for imports
 import sys
-import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 # Set test brain path before ANY imports
 test_brain_path = Path(__file__).parent.parent / 'test_brain'
@@ -32,7 +28,6 @@ mock_brain_io.BrainIO = MagicMock(return_value=MagicMock())
 sys.modules['brain_io'] = mock_brain_io
 
 # Now we can import llm_client and SlackAgent
-from clients.llm_client import Message
 
 def get_slack_agent():
     """Lazy import to ensure mocks are in place"""
@@ -107,7 +102,6 @@ class TestSlackAgentLocalMessaging:
             handler_called = True
 
         # Register our capture handler
-        original_register = agent._register_handlers
 
         def mock_register():
             @agent.app.event("message")
@@ -143,14 +137,13 @@ class TestSlackAgentLocalMessaging:
 
         Expected: say() called with "Working on it... 🧠" message
         """
-        agent = agent_with_mocks
 
         # Mock say and client
         say_mock = AsyncMock()
         working_msg = {"ts": "1234567890.999999", "ok": True}
         say_mock.return_value = working_msg
 
-        client_mock = AsyncMock()
+        AsyncMock()
 
         # Track say() calls
         call_args_list = []
@@ -195,7 +188,6 @@ class TestSlackAgentLocalMessaging:
 
         Expected: client.chat_delete() called with correct channel and ts
         """
-        agent = agent_with_mocks
 
         # Mock client.chat_delete
         client_mock = AsyncMock()
@@ -230,7 +222,6 @@ class TestSlackAgentLocalMessaging:
 
         Expected: No message processing, no response sent
         """
-        agent = agent_with_mocks
 
         bot_event = {
             "channel_type": "im",
@@ -267,7 +258,6 @@ class TestSlackAgentLocalMessaging:
 
         Expected: No message processing, no response sent
         """
-        agent = agent_with_mocks
 
         channel_event = {
             "channel_type": "channel",  # Not a DM
@@ -299,7 +289,6 @@ class TestSlackAgentLocalMessaging:
 
         Expected: No message processing, no response sent
         """
-        agent = agent_with_mocks
 
         empty_events = [
             {
@@ -342,7 +331,6 @@ class TestSlackAgentLocalMessaging:
 
         Expected: say() called without thread_ts to post in main channel
         """
-        agent = agent_with_mocks
 
         # Simulate say() mock
         say_mock = AsyncMock()

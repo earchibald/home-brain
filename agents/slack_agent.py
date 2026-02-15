@@ -12,7 +12,7 @@ import os
 import sys
 import asyncio
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict
 from datetime import datetime
 
 # Add parent directory to path for imports
@@ -185,12 +185,12 @@ Be concise but thorough. If you don't know something, say so rather than making 
                             channel=channel_id,
                             ts=working_ts
                         )
-                    except:
+                    except Exception:
                         pass
 
                 try:
                     await say(text=error_msg)
-                except:
+                except Exception:
                     pass
         
         @self.app.event("app_mention")

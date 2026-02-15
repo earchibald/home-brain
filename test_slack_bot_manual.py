@@ -21,10 +21,8 @@ Usage:
 import os
 import sys
 import asyncio
-import time
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
 
 # Load environment
 secrets_file = Path(__file__).parent / "secrets.env"
@@ -133,7 +131,7 @@ class SlackBotTestRunner:
 
             elif "test slow" in text:
                 test_messages["slow"] = True
-                print(f"✓ Received: 'test slow'")
+                print("✓ Received: 'test slow'")
                 self.test_results["performance"] = "pending"
 
             # Track bot responses
@@ -208,7 +206,7 @@ class SlackBotTestRunner:
         print("📝 MANUAL TESTING GUIDE")
         print("="*60)
 
-        print(f"""
+        print("""
 Test Steps:
 
 Step 1: Basic Connectivity
@@ -275,7 +273,7 @@ To change thresholds:
         try:
             # Just check token format
             return bool(bot_token and bot_token.startswith("xoxb-"))
-        except:
+        except Exception:
             return False
 
 

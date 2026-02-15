@@ -12,12 +12,10 @@ Tests for brain context integration including:
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from typing import List, Dict, Any
 
 # Add parent directories to path for imports
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 # Set test brain path before ANY imports
 test_brain_path = Path(__file__).parent.parent / 'test_brain'
@@ -32,7 +30,7 @@ mock_brain_io.BrainIO = MagicMock(return_value=MagicMock())
 sys.modules['brain_io'] = mock_brain_io
 
 # Now we can import llm_client and SlackAgent
-from clients.llm_client import Message
+from clients.llm_client import Message  # noqa: E402
 
 def get_slack_agent():
     """Lazy import to ensure mocks are in place"""
@@ -326,7 +324,7 @@ class TestKhojContextInjection:
         # Check save_message calls for assistant response
         save_calls = agent.conversations.save_message.call_args_list
         # Should have at least the user message and response message
-        assistant_calls = [
+        [
             call for call in save_calls if "assistant" in str(call)
         ]
 

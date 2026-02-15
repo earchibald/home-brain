@@ -95,10 +95,10 @@ class DeploymentValidator:
         print(f"  Version: {version_str}")
 
         if version.major >= 3 and version.minor >= 10:
-            print(f"  ✓ Compatible")
+            print("  ✓ Compatible")
             self.checks_passed += 1
         else:
-            print(f"  ✗ Need Python 3.10+")
+            print("  ✗ Need Python 3.10+")
             self.checks_failed += 1
         print()
 
@@ -125,8 +125,8 @@ class DeploymentValidator:
                 self.checks_failed += 1
 
         if not all_installed:
-            print(f"\n  Install with:")
-            print(f"  pip install -r tests/requirements-test.txt")
+            print("\n  Install with:")
+            print("  pip install -r tests/requirements-test.txt")
         print()
 
     def check_slack_credentials(self):
@@ -138,24 +138,24 @@ class DeploymentValidator:
         app_token = os.getenv("SLACK_APP_TOKEN")
 
         if secrets_file.exists():
-            print(f"  ✓ secrets.env found")
+            print("  ✓ secrets.env found")
             self.checks_passed += 1
         else:
-            print(f"  ✗ secrets.env not found")
+            print("  ✗ secrets.env not found")
             self.checks_failed += 1
 
         if bot_token:
             print(f"  ✓ SLACK_BOT_TOKEN set: {bot_token[:20]}...")
             self.checks_passed += 1
         else:
-            print(f"  ✗ SLACK_BOT_TOKEN not set")
+            print("  ✗ SLACK_BOT_TOKEN not set")
             self.checks_failed += 1
 
         if app_token:
             print(f"  ✓ SLACK_APP_TOKEN set: {app_token[:20]}...")
             self.checks_passed += 1
         else:
-            print(f"  ✗ SLACK_APP_TOKEN not set")
+            print("  ✗ SLACK_APP_TOKEN not set")
             self.checks_failed += 1
 
         print()
@@ -170,7 +170,7 @@ class DeploymentValidator:
             print(f"  ✓ pytest installed: {pytest.__version__}")
             self.checks_passed += 1
         except ImportError:
-            print(f"  ✗ pytest not installed")
+            print("  ✗ pytest not installed")
             self.checks_failed += 1
             print()
             return
@@ -188,16 +188,16 @@ class DeploymentValidator:
                 # Count tests
                 output = result.stdout.decode()
                 if "67" in output or "passed" in output:
-                    print(f"  ✓ Test collection successful")
+                    print("  ✓ Test collection successful")
                     self.checks_passed += 1
                 else:
-                    print(f"  ⚠ Tests collected (check test count)")
+                    print("  ⚠ Tests collected (check test count)")
                     self.checks_passed += 1
             else:
-                print(f"  ✗ Test collection failed")
+                print("  ✗ Test collection failed")
                 self.checks_failed += 1
         except subprocess.TimeoutExpired:
-            print(f"  ✗ Test collection timeout")
+            print("  ✗ Test collection timeout")
             self.checks_failed += 1
         except Exception as e:
             print(f"  ✗ Error: {e}")
@@ -217,16 +217,16 @@ class DeploymentValidator:
             )
 
             if result.returncode == 0:
-                print(f"  ✓ NUC-2 SSH accessible")
+                print("  ✓ NUC-2 SSH accessible")
                 self.checks_passed += 1
             else:
-                print(f"  ✗ NUC-2 SSH connection failed")
+                print("  ✗ NUC-2 SSH connection failed")
                 self.checks_failed += 1
         except subprocess.TimeoutExpired:
-            print(f"  ✗ NUC-2 SSH timeout")
+            print("  ✗ NUC-2 SSH timeout")
             self.checks_failed += 1
         except FileNotFoundError:
-            print(f"  ✗ SSH not available")
+            print("  ✗ SSH not available")
             self.checks_failed += 1
         except Exception as e:
             print(f"  ✗ Error: {e}")
@@ -253,11 +253,11 @@ class DeploymentValidator:
                 print(f"  ✓ Service status: {status}")
                 self.checks_passed += 1
             else:
-                print(f"  ⚠ Service not running (will start on deployment)")
+                print("  ⚠ Service not running (will start on deployment)")
                 self.checks_passed += 1
         except Exception as e:
             print(f"  ⚠ Could not check service: {e}")
-            print(f"    (This is OK if NUC-2 is not yet deployed)")
+            print("    (This is OK if NUC-2 is not yet deployed)")
             self.checks_passed += 1
 
         print()

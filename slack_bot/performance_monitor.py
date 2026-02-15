@@ -2,7 +2,7 @@
 Performance monitoring for tracking response latencies and sending alerts.
 """
 
-from typing import List, Dict, Optional
+from typing import Dict, Optional
 from collections import deque
 import statistics
 import slack_bot.alerting

@@ -10,7 +10,6 @@ Tests verify:
 """
 
 import pytest
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from slack_sdk.errors import SlackApiError
 
@@ -207,7 +206,7 @@ class TestHealthChecks:
 
                 # Agent initialization should raise ValueError for missing brain path
                 with pytest.raises(ValueError, match="Brain"):
-                    agent = SlackAgent(config)
+                    SlackAgent(config)
 
     @pytest.mark.asyncio
     async def test_slack_auth_failure_blocks_startup(self, test_brain_path, mock_llm, mock_khoj):

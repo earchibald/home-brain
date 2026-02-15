@@ -10,7 +10,6 @@ import asyncio
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime, timezone
-import os
 
 
 class ConversationManager:
@@ -186,7 +185,7 @@ class ConversationManager:
         
         if not self.llm_client:
             # No LLM client, just truncate
-            print(f"Warning: Truncating conversation (no LLM client for summarization)")
+            print("Warning: Truncating conversation (no LLM client for summarization)")
             return messages[-keep_recent:]
         
         # Split into old (to summarize) and recent (to keep)

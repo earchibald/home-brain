@@ -3,9 +3,8 @@ Ollama Client - LLM inference client for Mac Mini (192.168.1.58:11434)
 """
 
 import httpx
-import json
 import logging
-from typing import List, Dict, Any, Optional, AsyncGenerator
+from typing import List, Optional
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
