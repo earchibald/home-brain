@@ -5,6 +5,7 @@ These tests are expected to fail initially as the feature is not yet implemented
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 import io
+import requests
 
 
 @pytest.mark.red
@@ -40,6 +41,8 @@ def test_file_content_downloaded_from_slack():
         mock_response = Mock()
         mock_response.content = mock_file_data
         mock_response.status_code = 200
+        mock_response.headers = {'Content-Type': 'text/plain'}
+        mock_response.url = 'https://files.slack.com/files-pri/T123/download/file.txt'
         mock_get.return_value = mock_response
 
         content = download_file_from_slack(
@@ -131,6 +134,76 @@ def test_file_download_failure_handled():
         mock_get.side_effect = Exception('Network error')
 
         with pytest.raises(FileDownloadError):
+            download_file_from_slack(
+                'https://slack.com/files/download/123',
+                token='xoxb-token'
+            )
+
+
+@pytest.mark.red
+def test_redirect_html_response_detected_as_error():
+    """Test that a 302 redirect to an HTML page (login/error) is detected and raises FileDownloadError."""
+    from slack_bot.file_handler import download_file_from_slack
+    from slack_bot.exceptions import FileDownloadError
+
+    html_content = b'<html><head><title>Slack</title></head><body>Sign in to Slack</body></html>'
+
+    with patch('slack_bot.file_handler.requests.get') as mock_get:
+        mock_response = Mock()
+        mock_response.content = html_content
+        mock_response.status_code = 200
+        mock_response.headers = {'Content-Type': 'text/html; charset=utf-8'}
+        mock_response.url = 'https://slack.com/signin'
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        with pytest.raises(FileDownloadError, match="HTML"):
+            download_file_from_slack(
+                'https://slack.com/files/download/123',
+                token='xoxb-token'
+            )
+
+
+@pytest.mark.red
+def test_redirect_to_s3_succeeds():
+    """Test that a redirect to S3 pre-signed URL returns file content correctly."""
+    from slack_bot.file_handler import download_file_from_slack
+
+    file_data = b'Real file content from S3'
+
+    with patch('slack_bot.file_handler.requests.get') as mock_get:
+        mock_response = Mock()
+        mock_response.content = file_data
+        mock_response.status_code = 200
+        mock_response.headers = {'Content-Type': 'application/octet-stream'}
+        mock_response.url = 'https://files.slack.com/files-pri/T123/download/document.txt'
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        content = download_file_from_slack(
+            'https://slack.com/files/download/123',
+            token='xoxb-token'
+        )
+
+        assert content == file_data
+
+
+@pytest.mark.red
+def test_empty_response_detected_as_error():
+    """Test that an empty response body raises FileDownloadError."""
+    from slack_bot.file_handler import download_file_from_slack
+    from slack_bot.exceptions import FileDownloadError
+
+    with patch('slack_bot.file_handler.requests.get') as mock_get:
+        mock_response = Mock()
+        mock_response.content = b''
+        mock_response.status_code = 200
+        mock_response.headers = {'Content-Type': 'application/octet-stream'}
+        mock_response.url = 'https://files.slack.com/download/123'
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        with pytest.raises(FileDownloadError, match="[Ee]mpty"):
             download_file_from_slack(
                 'https://slack.com/files/download/123',
                 token='xoxb-token'
