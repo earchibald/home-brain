@@ -86,6 +86,8 @@ class SlackAgent(Agent):
 
 When relevant, search the brain for context to provide informed, personalized responses. Always cite your sources when referencing specific information from the brain.
 
+When the user uploads files, the content will be provided under a "## Files Uploaded by User:" section. Analyze the file content directly and respond to questions about it. Do NOT suggest the user check their local file system or use external tools - you already have the file content.
+
 Be concise but thorough. If you don't know something, say so rather than making assumptions.""",
         )
 
@@ -149,8 +151,9 @@ Be concise but thorough. If you don't know something, say so rather than making 
                         # Continue - file processing failure shouldn't stop message handling
 
             # Combine text and file content for LLM
+            has_attachments = bool(file_content)
             text = (
-                f"{user_message}\n\n**Attachments:**\n{file_content}"
+                f"{user_message}\n\n## Files Uploaded by User:\n{file_content}"
                 if file_content
                 else user_message
             )
@@ -175,7 +178,7 @@ Be concise but thorough. If you don't know something, say so rather than making 
 
                 # Process message (this is slow - LLM inference)
                 response = await self._process_message(
-                    user_id, text, thread_ts, user_message=user_message
+                    user_id, text, thread_ts, user_message=user_message, has_attachments=has_attachments
                 )
 
                 # Delete working message if we successfully sent it
@@ -256,7 +259,7 @@ Be concise but thorough. If you don't know something, say so rather than making 
             return f"*Could not process file {file_name}: {str(e)}*\n"
 
     async def _process_message(
-        self, user_id: str, text: str, thread_id: str, user_message: str = ""
+        self, user_id: str, text: str, thread_id: str, user_message: str = "", has_attachments: bool = False
     ) -> str:
         """
         Process incoming message and generate response
@@ -266,6 +269,7 @@ Be concise but thorough. If you don't know something, say so rather than making 
             text: Message text (may include file attachment content)
             thread_id: Thread timestamp
             user_message: Original user message (without attachments), used for Khoj search
+            has_attachments: Whether the message includes file attachments
 
         Returns:
             Response text
@@ -288,13 +292,14 @@ Be concise but thorough. If you don't know something, say so rather than making 
             )
 
         # Search brain for context (if enabled)
+        # Skip Khoj search when files are attached - the file IS the context
         # Use original user message for Khoj search, not combined text with attachments
         context = ""
         khoj_query = user_message if user_message else text
         # Truncate query to reasonable length for Khoj (avoid URL too long errors)
         khoj_query = khoj_query[:500]
 
-        if self.enable_khoj_search and len(khoj_query) > 10:
+        if self.enable_khoj_search and len(khoj_query) > 10 and not has_attachments:
             try:
                 search_results = await self.khoj.search(
                     query=khoj_query,
