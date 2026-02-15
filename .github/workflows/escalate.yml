@@ -85,12 +85,20 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `CI Failure: Tests failing on ${branch} (${commitSha.substring(0, 7)})`,
-              body: body + '\n\n@copilot please investigate and fix',
+              body: body,
               labels: ['bug']
             });
 
             core.setOutput('issue_url', issue.data.html_url);
             core.setOutput('issue_number', issue.data.number);
+
+            // Add comment to trigger Copilot agent
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.data.number,
+              body: '@copilot please investigate and fix this CI failure'
+            });
 
       - name: Notify Slack
         env:
