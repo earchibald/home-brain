@@ -19,28 +19,32 @@ import sys
 from pathlib import Path
 
 # Set test brain path before ANY imports
-test_brain_path = Path(__file__).parent.parent / 'test_brain'
+test_brain_path = Path(__file__).parent.parent / "test_brain"
 test_brain_path.mkdir(parents=True, exist_ok=True)
-(test_brain_path / 'users').mkdir(parents=True, exist_ok=True)
+(test_brain_path / "users").mkdir(parents=True, exist_ok=True)
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Mock brain_io module BEFORE importing anything that depends on agent_platform
 mock_brain_io = MagicMock()
 mock_brain_io.BrainIO = MagicMock(return_value=MagicMock())
-sys.modules['brain_io'] = mock_brain_io
+sys.modules["brain_io"] = mock_brain_io
 
 # Now we can import llm_client and SlackAgent
 
+
 def get_slack_agent():
     """Lazy import to ensure mocks are in place"""
-    with patch('agents.slack_agent.BrainIO'):
+    with patch("agents.slack_agent.BrainIO"):
         from agents.slack_agent import SlackAgent
+
         return SlackAgent
+
 
 def get_agent_platform():
     """Lazy import to ensure mocks are in place"""
     from agent_platform import AgentPlatform
+
     return AgentPlatform
 
 
@@ -59,7 +63,7 @@ class TestErrorHandlingAndResilience:
             "max_context_tokens": 6000,
             "enable_khoj_search": True,
             "max_search_results": 3,
-            "notification": {"enabled": True}
+            "notification": {"enabled": True},
         }
 
     @pytest.fixture
@@ -71,7 +75,7 @@ class TestErrorHandlingAndResilience:
     @pytest.fixture
     async def agent_with_mocks(self, agent_config, mock_env, mock_khoj, mock_llm):
         """Create SlackAgent with mocked dependencies"""
-        with patch('agents.slack_agent.AsyncApp'):
+        with patch("agents.slack_agent.AsyncApp"):
             SlackAgent = get_slack_agent()
             agent = SlackAgent(agent_config)
             agent.khoj = mock_khoj
@@ -116,9 +120,7 @@ class TestErrorHandlingAndResilience:
         agent.conversations.summarize_if_needed.return_value = []
 
         # Mock LLM to raise exception
-        agent.llm.chat = AsyncMock(
-            side_effect=Exception("Ollama connection refused")
-        )
+        agent.llm.chat = AsyncMock(side_effect=Exception("Ollama connection refused"))
 
         user_id = "U01TEST123"
         thread_id = "1234567890.123456"
@@ -128,7 +130,9 @@ class TestErrorHandlingAndResilience:
         response = await agent._process_message(user_id, query, thread_id)
 
         # Check that friendly error message is returned
-        assert "Sorry" in response or "temporary" in response or "unavailable" in response
+        assert (
+            "Sorry" in response or "temporary" in response or "unavailable" in response
+        )
 
     # ========================================================================
     # Test Case 2: Khoj error continues without context
@@ -157,12 +161,12 @@ class TestErrorHandlingAndResilience:
         agent.conversations.summarize_if_needed.return_value = []
 
         # Mock Khoj to fail
-        agent.khoj.search = AsyncMock(
-            side_effect=Exception("Khoj service unavailable")
-        )
+        agent.khoj.search = AsyncMock(side_effect=Exception("Khoj service unavailable"))
 
         # Mock LLM to succeed
-        agent.llm.chat = AsyncMock(return_value="Here's my response without brain context")
+        agent.llm.chat = AsyncMock(
+            return_value="Here's my response without brain context"
+        )
 
         user_id = "U01TEST123"
         thread_id = "1234567890.123456"
@@ -182,9 +186,7 @@ class TestErrorHandlingAndResilience:
     # ========================================================================
 
     @pytest.mark.asyncio
-    async def test_working_indicator_cleaned_up_on_error(
-        self, agent_with_mocks
-    ):
+    async def test_working_indicator_cleaned_up_on_error(self, agent_with_mocks):
         """
         Verify that working indicator is deleted even when processing fails.
 
@@ -214,8 +216,7 @@ class TestErrorHandlingAndResilience:
 
         # Verify deletion was called
         client_mock.chat_delete.assert_called_once_with(
-            channel=channel_id,
-            ts=working_ts
+            channel=channel_id, ts=working_ts
         )
 
     # ========================================================================
@@ -316,9 +317,7 @@ class TestErrorHandlingAndResilience:
     # ========================================================================
 
     @pytest.mark.asyncio
-    async def test_ntfy_notification_sent_on_crash(
-        self, agent_with_mocks, mock_ntfy
-    ):
+    async def test_ntfy_notification_sent_on_crash(self, agent_with_mocks, mock_ntfy):
         """
         Verify that ntfy.sh notifications are sent when service crashes.
 
@@ -336,11 +335,10 @@ class TestErrorHandlingAndResilience:
         agent = agent_with_mocks
 
         # Mock the notify method to track calls
-        with patch.object(agent, 'notify', new_callable=AsyncMock) as mock_notify:
+        with patch.object(agent, "notify", new_callable=AsyncMock) as mock_notify:
             # Simulate notification call
             await agent.notify(
-                "Slack Bot Error",
-                "⚠️ Slack agent crashed: Connection timeout"
+                "Slack Bot Error", "⚠️ Slack agent crashed: Connection timeout"
             )
 
             # Verify notify was called
@@ -366,7 +364,7 @@ class TestErrorRecoveryScenarios:
             "max_context_tokens": 6000,
             "enable_khoj_search": True,
             "max_search_results": 3,
-            "notification": {"enabled": True}
+            "notification": {"enabled": True},
         }
 
     @pytest.fixture
@@ -378,7 +376,7 @@ class TestErrorRecoveryScenarios:
     @pytest.fixture
     async def agent_with_mocks(self, agent_config, mock_env, mock_khoj, mock_llm):
         """Create agent with mocks"""
-        with patch('agents.slack_agent.AsyncApp'):
+        with patch("agents.slack_agent.AsyncApp"):
             SlackAgent = get_slack_agent()
             agent = SlackAgent(agent_config)
             agent.khoj = mock_khoj

@@ -18,7 +18,7 @@ class AdviceAgent(Agent):
     - ADHD strategies & symptom management
     - Work organization & productivity
     - Learning techniques & study strategies
-    
+
     Learns from brain notes about successes and failures.
     """
 
@@ -26,45 +26,49 @@ class AdviceAgent(Agent):
         """Generate daily advice based on brain context"""
         today = datetime.now().strftime("%Y-%m-%d")
         advice_path = f"advice/{today}-daily-advice.md"
-        
+
         try:
             # Check if advice already exists
             existing = await self.brain_io.read_file(advice_path)
             if existing:
                 self.logger.info(f"Advice already generated for {today}")
                 return True
-            
+
             # Get recent activity and context
             context = await self._gather_context()
-            
+
             # Generate advice for each specialization
             adhd_advice = await self._generate_adhd_advice(context)
             work_advice = await self._generate_work_advice(context)
             learning_advice = await self._generate_learning_advice(context)
-            
+
             # Build advice document
-            advice = self._build_advice_document(today, adhd_advice, work_advice, learning_advice)
-            
+            advice = self._build_advice_document(
+                today, adhd_advice, work_advice, learning_advice
+            )
+
             # Write to brain
-            success = await self.brain_io.write_file(advice_path, advice, overwrite=False)
-            
+            success = await self.brain_io.write_file(
+                advice_path, advice, overwrite=False
+            )
+
             if success:
                 await self.notify(
                     "[NUC-2] ✓ Daily Advice Generated",
-                    f"Personalized advice created for {today}"
+                    f"Personalized advice created for {today}",
                 )
                 await self.log_execution(True, f"Generated advice for {today}")
             else:
                 await self.log_execution(False, "Failed to write advice file")
-            
+
             return success
-            
+
         except Exception as e:
             self.logger.error(f"Advice generation failed: {e}", exc_info=True)
             await self.notify(
                 "[NUC-2] Advice Agent Failed",
                 f"Error generating advice: {str(e)}",
-                priority="high"
+                priority="high",
             )
             await self.log_execution(False, str(e))
             return False
@@ -74,36 +78,34 @@ class AdviceAgent(Agent):
         try:
             # Get recent notes
             recent_files = await self.brain_io.get_recent_files(hours=168)  # Last week
-            
+
             context = {
                 "recent_files": recent_files[:5],
                 "journal_activity": "",
                 "work_activity": "",
                 "adhd_patterns": "",
             }
-            
+
             # Try to find ADHD-related notes
             adhd_results = await self.khoj.search_by_folder(
-                "ADHD time management focus",
-                folder="learning"
+                "ADHD time management focus", folder="learning"
             )
             if adhd_results:
-                context["adhd_patterns"] = "\n".join([
-                    r.entry[:200] for r in adhd_results[:3]
-                ])
-            
+                context["adhd_patterns"] = "\n".join(
+                    [r.entry[:200] for r in adhd_results[:3]]
+                )
+
             # Try to find work activity
             work_results = await self.khoj.search_by_folder(
-                "project work deadline",
-                folder="work"
+                "project work deadline", folder="work"
             )
             if work_results:
-                context["work_activity"] = "\n".join([
-                    r.entry[:200] for r in work_results[:3]
-                ])
-            
+                context["work_activity"] = "\n".join(
+                    [r.entry[:200] for r in work_results[:3]]
+                )
+
             return context
-            
+
         except Exception as e:
             self.logger.warning(f"Failed to gather context: {e}")
             return {}
@@ -124,10 +126,10 @@ Provide practical advice that considers:
 - Environmental optimization
 
 Format: A single tip that the user can implement in the next hour."""
-            
+
             response = await self.llm.complete(prompt, max_tokens=150)
             return response.strip()
-            
+
         except Exception as e:
             self.logger.warning(f"Failed to generate ADHD advice: {e}")
             return "💡 Tip: Use a timer for task transitions to manage time blindness."
@@ -147,10 +149,10 @@ Consider their current workload and suggest:
 - Priority ranking if needed
 
 Format: Actionable work advice."""
-            
+
             response = await self.llm.complete(prompt, max_tokens=150)
             return response.strip()
-            
+
         except Exception as e:
             self.logger.warning(f"Failed to generate work advice: {e}")
             return "💼 Tip: Schedule your hardest task for peak energy hours."
@@ -170,20 +172,16 @@ Suggest:
 - Break recommendation if deep focus detected
 
 Format: Practical learning advice."""
-            
+
             response = await self.llm.complete(prompt, max_tokens=150)
             return response.strip()
-            
+
         except Exception as e:
             self.logger.warning(f"Failed to generate learning advice: {e}")
             return "📚 Tip: Take a 5-minute break every 25 minutes to consolidate learning."
 
     def _build_advice_document(
-        self,
-        today: str,
-        adhd: str,
-        work: str,
-        learning: str
+        self, today: str, adhd: str, work: str, learning: str
     ) -> str:
         """Build the markdown advice document"""
         return f"""# Your Personal Advice - {today}

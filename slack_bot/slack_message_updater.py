@@ -12,10 +12,7 @@ UPDATE_MIN_INTERVAL = 0.5  # seconds
 
 
 def update_message_with_stream(
-    client,
-    channel: str,
-    message_ts: str,
-    content: str
+    client, channel: str, message_ts: str, content: str
 ) -> None:
     """
     Update a Slack message with streamed content.
@@ -27,21 +24,14 @@ def update_message_with_stream(
         content: Content to append/update
     """
     try:
-        client.chat_update(
-            channel=channel,
-            ts=message_ts,
-            text=content
-        )
+        client.chat_update(channel=channel, ts=message_ts, text=content)
     except Exception:
         # Log but don't fail - streaming continues even if update fails
         pass
 
 
 def stream_response_to_slack(
-    client,
-    channel: str,
-    message_ts: str,
-    stream_generator: Generator[str, None, None]
+    client, channel: str, message_ts: str, stream_generator: Generator[str, None, None]
 ) -> str:
     """
     Stream response chunks to Slack, batching updates for reasonable frequency.
@@ -74,22 +64,12 @@ def stream_response_to_slack(
         )
 
         if should_update:
-            update_message_with_stream(
-                client,
-                channel,
-                message_ts,
-                accumulated
-            )
+            update_message_with_stream(client, channel, message_ts, accumulated)
             batch_buffer = ""
             last_update_time = current_time
 
     # Final update with complete content
     if batch_buffer or not accumulated:
-        update_message_with_stream(
-            client,
-            channel,
-            message_ts,
-            accumulated
-        )
+        update_message_with_stream(client, channel, message_ts, accumulated)
 
     return accumulated

@@ -21,7 +21,9 @@ class TestHealthChecks:
     """Test suite for Slack Agent health checks"""
 
     @pytest.mark.asyncio
-    async def test_all_health_checks_pass(self, test_brain_path, mock_llm, mock_khoj, mock_slack_app):
+    async def test_all_health_checks_pass(
+        self, test_brain_path, mock_llm, mock_khoj, mock_slack_app
+    ):
         """
         Test that all health checks pass when all services available.
 
@@ -48,15 +50,16 @@ class TestHealthChecks:
         }
 
         # Patch environment variables
-        with patch.dict('os.environ', {
-            'SLACK_BOT_TOKEN': 'xoxb-test',
-            'SLACK_APP_TOKEN': 'xapp-test'
-        }):
+        with patch.dict(
+            "os.environ",
+            {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
+        ):
             # Patch the clients to use mocks
-            with patch('agents.slack_agent.OllamaClient') as mock_llm_class, \
-                 patch('agents.slack_agent.KhojClient') as mock_khoj_class, \
-                 patch('agents.slack_agent.AsyncApp') as mock_app_class:
-
+            with (
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+            ):
                 # Setup mocks
                 mock_llm_class.return_value = mock_llm
                 mock_khoj_class.return_value = mock_khoj
@@ -71,7 +74,9 @@ class TestHealthChecks:
                 # Should complete without raising
 
     @pytest.mark.asyncio
-    async def test_ollama_down_fails_startup(self, test_brain_path, mock_khoj, mock_slack_app):
+    async def test_ollama_down_fails_startup(
+        self, test_brain_path, mock_khoj, mock_slack_app
+    ):
         """
         Test that startup fails when Ollama is unavailable.
 
@@ -97,14 +102,15 @@ class TestHealthChecks:
         mock_llm = AsyncMock()
         mock_llm.health_check = AsyncMock(side_effect=Exception("Connection refused"))
 
-        with patch.dict('os.environ', {
-            'SLACK_BOT_TOKEN': 'xoxb-test',
-            'SLACK_APP_TOKEN': 'xapp-test'
-        }):
-            with patch('agents.slack_agent.OllamaClient') as mock_llm_class, \
-                 patch('agents.slack_agent.KhojClient') as mock_khoj_class, \
-                 patch('agents.slack_agent.AsyncApp') as mock_app_class:
-
+        with patch.dict(
+            "os.environ",
+            {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
+        ):
+            with (
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+            ):
                 mock_llm_class.return_value = mock_llm
                 mock_khoj_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
@@ -116,7 +122,9 @@ class TestHealthChecks:
                     await agent._health_check()
 
     @pytest.mark.asyncio
-    async def test_khoj_down_warns_but_continues(self, test_brain_path, mock_llm, mock_slack_app):
+    async def test_khoj_down_warns_but_continues(
+        self, test_brain_path, mock_llm, mock_slack_app
+    ):
         """
         Test that Khoj unavailability is non-fatal (warning only).
 
@@ -144,14 +152,15 @@ class TestHealthChecks:
         mock_khoj = AsyncMock()
         mock_khoj.health_check = AsyncMock(side_effect=Exception("Khoj unavailable"))
 
-        with patch.dict('os.environ', {
-            'SLACK_BOT_TOKEN': 'xoxb-test',
-            'SLACK_APP_TOKEN': 'xapp-test'
-        }):
-            with patch('agents.slack_agent.OllamaClient') as mock_llm_class, \
-                 patch('agents.slack_agent.KhojClient') as mock_khoj_class, \
-                 patch('agents.slack_agent.AsyncApp') as mock_app_class:
-
+        with patch.dict(
+            "os.environ",
+            {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
+        ):
+            with (
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+            ):
                 mock_llm_class.return_value = mock_llm
                 mock_khoj_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
@@ -168,7 +177,9 @@ class TestHealthChecks:
                     raise  # Re-raise if it's a critical error
 
     @pytest.mark.asyncio
-    async def test_brain_folder_missing_fails_startup(self, mock_llm, mock_khoj, mock_slack_app):
+    async def test_brain_folder_missing_fails_startup(
+        self, mock_llm, mock_khoj, mock_slack_app
+    ):
         """
         Test that missing brain folder fails startup.
 
@@ -192,14 +203,15 @@ class TestHealthChecks:
             "model": "llama3.2",
         }
 
-        with patch.dict('os.environ', {
-            'SLACK_BOT_TOKEN': 'xoxb-test',
-            'SLACK_APP_TOKEN': 'xapp-test'
-        }):
-            with patch('agents.slack_agent.OllamaClient') as mock_llm_class, \
-                 patch('agents.slack_agent.KhojClient') as mock_khoj_class, \
-                 patch('agents.slack_agent.AsyncApp') as mock_app_class:
-
+        with patch.dict(
+            "os.environ",
+            {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
+        ):
+            with (
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+            ):
                 mock_llm_class.return_value = mock_llm
                 mock_khoj_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
@@ -209,7 +221,9 @@ class TestHealthChecks:
                     SlackAgent(config)
 
     @pytest.mark.asyncio
-    async def test_slack_auth_failure_blocks_startup(self, test_brain_path, mock_llm, mock_khoj):
+    async def test_slack_auth_failure_blocks_startup(
+        self, test_brain_path, mock_llm, mock_khoj
+    ):
         """
         Test that Slack authentication failure blocks startup.
 
@@ -236,19 +250,19 @@ class TestHealthChecks:
         mock_slack_app = MagicMock()
         mock_slack_app.client.auth_test = AsyncMock(
             side_effect=SlackApiError(
-                message="Invalid token",
-                response={"error": "invalid_auth"}
+                message="Invalid token", response={"error": "invalid_auth"}
             )
         )
 
-        with patch.dict('os.environ', {
-            'SLACK_BOT_TOKEN': 'xoxb-invalid',
-            'SLACK_APP_TOKEN': 'xapp-invalid'
-        }):
-            with patch('agents.slack_agent.OllamaClient') as mock_llm_class, \
-                 patch('agents.slack_agent.KhojClient') as mock_khoj_class, \
-                 patch('agents.slack_agent.AsyncApp') as mock_app_class:
-
+        with patch.dict(
+            "os.environ",
+            {"SLACK_BOT_TOKEN": "xoxb-invalid", "SLACK_APP_TOKEN": "xapp-invalid"},
+        ):
+            with (
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+            ):
                 mock_llm_class.return_value = mock_llm
                 mock_khoj_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
@@ -265,7 +279,9 @@ class TestHealthCheckEdgeCases:
     """Test edge cases and error conditions in health checks"""
 
     @pytest.mark.asyncio
-    async def test_health_check_partial_failures(self, test_brain_path, mock_llm, mock_slack_app):
+    async def test_health_check_partial_failures(
+        self, test_brain_path, mock_llm, mock_slack_app
+    ):
         """
         Test health check behavior with multiple non-critical failures.
 
@@ -288,14 +304,15 @@ class TestHealthCheckEdgeCases:
             side_effect=Exception("Khoj connection failed")
         )
 
-        with patch.dict('os.environ', {
-            'SLACK_BOT_TOKEN': 'xoxb-test',
-            'SLACK_APP_TOKEN': 'xapp-test'
-        }):
-            with patch('agents.slack_agent.OllamaClient') as mock_llm_class, \
-                 patch('agents.slack_agent.KhojClient') as mock_khoj_class, \
-                 patch('agents.slack_agent.AsyncApp') as mock_app_class:
-
+        with patch.dict(
+            "os.environ",
+            {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
+        ):
+            with (
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+            ):
                 mock_llm_class.return_value = mock_llm
                 mock_khoj_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
@@ -310,7 +327,9 @@ class TestHealthCheckEdgeCases:
                     assert "Ollama" in str(e) or "Slack" in str(e) or "Brain" in str(e)
 
     @pytest.mark.asyncio
-    async def test_health_check_with_missing_config(self, test_brain_path, mock_llm, mock_khoj, mock_slack_app):
+    async def test_health_check_with_missing_config(
+        self, test_brain_path, mock_llm, mock_khoj, mock_slack_app
+    ):
         """
         Test health check with missing configuration values.
 
@@ -324,14 +343,15 @@ class TestHealthCheckEdgeCases:
             "brain_path": str(test_brain_path),
         }
 
-        with patch.dict('os.environ', {
-            'SLACK_BOT_TOKEN': 'xoxb-test',
-            'SLACK_APP_TOKEN': 'xapp-test'
-        }):
-            with patch('agents.slack_agent.OllamaClient') as mock_llm_class, \
-                 patch('agents.slack_agent.KhojClient') as mock_khoj_class, \
-                 patch('agents.slack_agent.AsyncApp') as mock_app_class:
-
+        with patch.dict(
+            "os.environ",
+            {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
+        ):
+            with (
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+            ):
                 mock_llm_class.return_value = mock_llm
                 mock_khoj_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
@@ -365,20 +385,21 @@ class TestHealthCheckRecovery:
         mock_llm.health_check = AsyncMock()
         mock_llm.health_check.side_effect = [
             Exception("Temporary failure"),
-            None  # Success on retry
+            None,  # Success on retry
         ]
 
         mock_khoj = AsyncMock()
         mock_khoj.health_check = AsyncMock(return_value=None)
 
-        with patch.dict('os.environ', {
-            'SLACK_BOT_TOKEN': 'xoxb-test',
-            'SLACK_APP_TOKEN': 'xapp-test'
-        }):
-            with patch('agents.slack_agent.OllamaClient') as mock_llm_class, \
-                 patch('agents.slack_agent.KhojClient') as mock_khoj_class, \
-                 patch('agents.slack_agent.AsyncApp') as mock_app_class:
-
+        with patch.dict(
+            "os.environ",
+            {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
+        ):
+            with (
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+            ):
                 mock_llm_class.return_value = mock_llm
                 mock_khoj_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app

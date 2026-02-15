@@ -66,15 +66,15 @@ class SlackBotTestRunner:
             "basic_message": None,
             "file_attachment": None,
             "performance": None,
-            "working_indicator": None
+            "working_indicator": None,
         }
         self.messages_received = []
 
     async def run_tests(self):
         """Run all test scenarios."""
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("🧪 SLACK BOT TEST SUITE")
-        print("="*60)
+        print("=" * 60)
 
         print("\n📋 Instructions:")
         print("1. This script monitors Slack DMs for responses")
@@ -148,9 +148,9 @@ class SlackBotTestRunner:
 
     async def _display_results(self):
         """Display test results summary."""
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("📊 TEST RESULTS")
-        print("="*60)
+        print("=" * 60)
 
         print("\n✅ Features to Test Manually:")
         print("""
@@ -186,9 +186,9 @@ class SlackBotTestRunner:
    - Verify: Context is maintained across turns
         """)
 
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("🔍 VERIFICATION CHECKLIST")
-        print("="*60)
+        print("=" * 60)
 
         checks = [
             ("Slack connection", self._can_connect_slack()),
@@ -202,9 +202,9 @@ class SlackBotTestRunner:
             symbol = "✓" if status == "Manually verify" or status else "✗"
             print(f"{symbol} {check_name}: {status}")
 
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("📝 MANUAL TESTING GUIDE")
-        print("="*60)
+        print("=" * 60)
 
         print("""
 Test Steps:
@@ -245,9 +245,9 @@ View Live Logs:
   sudo journalctl -u brain-slack-bot -f
         """)
 
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("⚙️  CONFIGURATION VERIFICATION")
-        print("="*60)
+        print("=" * 60)
 
         print(f"""
 Current Configuration:
@@ -288,6 +288,7 @@ async def main():
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

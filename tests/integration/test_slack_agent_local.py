@@ -16,23 +16,25 @@ import sys
 from pathlib import Path
 
 # Set test brain path before ANY imports
-test_brain_path = Path(__file__).parent.parent / 'test_brain'
+test_brain_path = Path(__file__).parent.parent / "test_brain"
 test_brain_path.mkdir(parents=True, exist_ok=True)
-(test_brain_path / 'users').mkdir(parents=True, exist_ok=True)
+(test_brain_path / "users").mkdir(parents=True, exist_ok=True)
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Mock brain_io module BEFORE importing anything that depends on agent_platform
 mock_brain_io = MagicMock()
 mock_brain_io.BrainIO = MagicMock(return_value=MagicMock())
-sys.modules['brain_io'] = mock_brain_io
+sys.modules["brain_io"] = mock_brain_io
 
 # Now we can import llm_client and SlackAgent
 
+
 def get_slack_agent():
     """Lazy import to ensure mocks are in place"""
-    with patch('agents.slack_agent.BrainIO'):
+    with patch("agents.slack_agent.BrainIO"):
         from agents.slack_agent import SlackAgent
+
         return SlackAgent
 
 
@@ -51,7 +53,7 @@ class TestSlackAgentLocalMessaging:
             "max_context_tokens": 6000,
             "enable_khoj_search": True,
             "max_search_results": 3,
-            "notification": {"enabled": False}
+            "notification": {"enabled": False},
         }
 
     @pytest.fixture
@@ -63,7 +65,7 @@ class TestSlackAgentLocalMessaging:
     @pytest.fixture
     async def agent_with_mocks(self, agent_config, mock_env, mock_khoj, mock_llm):
         """Create a SlackAgent with mocked dependencies"""
-        with patch('agents.slack_agent.AsyncApp') as mock_app:
+        with patch("agents.slack_agent.AsyncApp") as mock_app:
             SlackAgent = get_slack_agent()
             agent = SlackAgent(agent_config)
 
@@ -113,7 +115,7 @@ class TestSlackAgentLocalMessaging:
             async def handle_mention(event, say):
                 pass
 
-        with patch.object(agent, '_register_handlers', side_effect=mock_register):
+        with patch.object(agent, "_register_handlers", side_effect=mock_register):
             agent._register_handlers()
 
         # Verify the handler is registered
@@ -161,7 +163,7 @@ class TestSlackAgentLocalMessaging:
             "text": "Hello, bot!",
             "ts": "1234567890.123456",
             "channel": "D01TEST",
-            "type": "message"
+            "type": "message",
         }
 
         # Extract key behavior: working indicator should be sent first
@@ -203,8 +205,7 @@ class TestSlackAgentLocalMessaging:
 
         # Assert the call was made
         client_mock.chat_delete.assert_called_once_with(
-            channel=channel_id,
-            ts=working_ts
+            channel=channel_id, ts=working_ts
         )
 
     # ========================================================================
@@ -230,7 +231,7 @@ class TestSlackAgentLocalMessaging:
             "ts": "1234567890.123456",
             "channel": "D01TEST",
             "type": "message",
-            "subtype": "bot_message"
+            "subtype": "bot_message",
         }
 
         # The handler checks: if event.get("subtype") == "bot_message": return
@@ -265,7 +266,7 @@ class TestSlackAgentLocalMessaging:
             "text": "Hey bot!",
             "ts": "1234567890.123456",
             "channel": "C01TEST",
-            "type": "message"
+            "type": "message",
         }
 
         # The handler checks: if channel_type != "im": return
@@ -297,7 +298,7 @@ class TestSlackAgentLocalMessaging:
                 "text": "",
                 "ts": "1234567890.123456",
                 "channel": "D01TEST",
-                "type": "message"
+                "type": "message",
             },
             {
                 "channel_type": "im",
@@ -305,8 +306,8 @@ class TestSlackAgentLocalMessaging:
                 "text": "   ",
                 "ts": "1234567890.123456",
                 "channel": "D01TEST",
-                "type": "message"
-            }
+                "type": "message",
+            },
         ]
 
         for event in empty_events:
@@ -336,7 +337,7 @@ class TestSlackAgentLocalMessaging:
         say_mock = AsyncMock()
         say_responses = [
             {"ts": "1234567890.999999", "ok": True},  # Working indicator
-            {"ts": "1234567890.888888", "ok": True}   # Actual response
+            {"ts": "1234567890.888888", "ok": True},  # Actual response
         ]
         say_mock.side_effect = say_responses
 

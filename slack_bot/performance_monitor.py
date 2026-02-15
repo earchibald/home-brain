@@ -16,7 +16,7 @@ class PerformanceMonitor:
         slow_threshold_seconds: float = 30.0,
         max_history_size: int = 1000,
         slack_client=None,
-        alert_channel: Optional[str] = None
+        alert_channel: Optional[str] = None,
     ):
         """
         Initialize performance monitor.
@@ -38,7 +38,7 @@ class PerformanceMonitor:
         request_id: str,
         duration_seconds: float,
         user_id: Optional[str] = None,
-        channel_id: Optional[str] = None
+        channel_id: Optional[str] = None,
     ) -> None:
         """
         Record a response time measurement.
@@ -54,9 +54,9 @@ class PerformanceMonitor:
 
         # Store request details
         self.request_log[request_id] = {
-            'duration': duration_seconds,
-            'user_id': user_id,
-            'channel_id': channel_id
+            "duration": duration_seconds,
+            "user_id": user_id,
+            "channel_id": channel_id,
         }
 
         # Check if slow threshold exceeded
@@ -68,7 +68,7 @@ class PerformanceMonitor:
         request_id: str,
         duration_seconds: float,
         user_id: Optional[str] = None,
-        channel_id: Optional[str] = None
+        channel_id: Optional[str] = None,
     ) -> None:
         """Send alert for slow responses."""
         title = "Slow Response Detected"
@@ -82,7 +82,7 @@ class PerformanceMonitor:
             title,
             message,
             slack_client=self.slack_client,
-            channel_id=self.alert_channel or channel_id
+            channel_id=self.alert_channel or channel_id,
         )
 
     def get_average_latency(self) -> Optional[float]:
@@ -123,27 +123,27 @@ class PerformanceMonitor:
             Dictionary with histogram data
         """
         if not self.latencies:
-            return {'buckets': []}
+            return {"buckets": []}
 
         # Create histogram buckets (0-1s, 1-2s, 2-5s, 5-10s, 10s+)
         buckets = {
-            '0-1s': 0,
-            '1-2s': 0,
-            '2-5s': 0,
-            '5-10s': 0,
-            '10s+': 0,
+            "0-1s": 0,
+            "1-2s": 0,
+            "2-5s": 0,
+            "5-10s": 0,
+            "10s+": 0,
         }
 
         for latency in self.latencies:
             if latency < 1:
-                buckets['0-1s'] += 1
+                buckets["0-1s"] += 1
             elif latency < 2:
-                buckets['1-2s'] += 1
+                buckets["1-2s"] += 1
             elif latency < 5:
-                buckets['2-5s'] += 1
+                buckets["2-5s"] += 1
             elif latency < 10:
-                buckets['5-10s'] += 1
+                buckets["5-10s"] += 1
             else:
-                buckets['10s+'] += 1
+                buckets["10s+"] += 1
 
-        return {'buckets': buckets}
+        return {"buckets": buckets}

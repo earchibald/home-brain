@@ -20,11 +20,11 @@ from brain_io import BrainIO
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='[%(asctime)s] %(levelname)s - %(name)s: %(message)s',
+    format="[%(asctime)s] %(levelname)s - %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(Path(__file__).parent / "logs" / "agent_platform.log")
-    ]
+        logging.FileHandler(Path(__file__).parent / "logs" / "agent_platform.log"),
+    ],
 )
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ class Agent:
     async def run(self) -> bool:
         """
         Main agent execution. Override in subclass.
-        
+
         Returns:
             True if successful, False otherwise
         """
@@ -61,48 +61,50 @@ class Agent:
         """Execute the agent with timing and error handling"""
         self.start_time = datetime.now()
         logger.info(f"[{self.name}] Starting execution...")
-        
+
         try:
             result = await self.run()
             self.end_time = datetime.now()
             duration = (self.end_time - self.start_time).total_seconds()
-            
+
             status = "✓ SUCCESS" if result else "✗ FAILED"
             logger.info(f"[{self.name}] {status} (took {duration:.2f}s)")
-            
+
             return result
-            
+
         except Exception as e:
             self.end_time = datetime.now()
             duration = (self.end_time - self.start_time).total_seconds()
-            logger.error(f"[{self.name}] ✗ ERROR: {e} (took {duration:.2f}s)", exc_info=True)
+            logger.error(
+                f"[{self.name}] ✗ ERROR: {e} (took {duration:.2f}s)", exc_info=True
+            )
             return False
 
     async def notify(self, title: str, message: str, priority: str = "default"):
         """Send a notification via the notification system"""
         import subprocess
+
         try:
-            subprocess.run([
-                "/usr/local/bin/notify.sh",
-                title,
-                message,
-                priority
-            ], check=False)
+            subprocess.run(
+                ["/usr/local/bin/notify.sh", title, message, priority], check=False
+            )
         except Exception as e:
             logger.warning(f"Failed to send notification: {e}")
 
     async def log_execution(self, result: bool, details: str = ""):
         """Log execution to a JSON file in logs folder"""
         log_file = Path(__file__).parent / "logs" / f"{self.name}_executions.jsonl"
-        
+
         entry = {
             "timestamp": datetime.now().isoformat(),
             "agent": self.name,
             "success": result,
-            "duration": (self.end_time - self.start_time).total_seconds() if self.end_time else 0,
+            "duration": (self.end_time - self.start_time).total_seconds()
+            if self.end_time
+            else 0,
             "details": details,
         }
-        
+
         try:
             log_file.parent.mkdir(parents=True, exist_ok=True)
             with open(log_file, "a") as f:
@@ -130,56 +132,52 @@ class AgentPlatform:
         if name not in self.agents:
             logger.error(f"Unknown agent: {name}")
             return False
-        
+
         agent_class = self.agents[name]
         agent = agent_class(
-            name=name,
-            khoj=self.khoj,
-            llm=self.llm,
-            brain_io=self.brain_io,
-            **kwargs
+            name=name, khoj=self.khoj, llm=self.llm, brain_io=self.brain_io, **kwargs
         )
-        
+
         return await agent.execute()
 
     async def start_service(self, agent: "Agent") -> None:
         """
         Start a long-running service agent (runs indefinitely)
-        
+
         Used for agents like SlackAgent that need to stay running and listen for events.
         Handles errors and notifications, with automatic restart on failure.
-        
+
         Args:
             agent: Agent instance to run as service
         """
         logger.info(f"Starting service agent: {agent.name}")
-        
+
         max_restarts = 5
         restart_count = 0
         base_delay = 5
-        
+
         while restart_count < max_restarts:
             try:
                 # Run the agent's main loop (blocks indefinitely)
                 await agent.run()
-                
+
                 # If we get here, agent stopped gracefully
                 logger.info(f"Service agent {agent.name} stopped gracefully")
                 break
-                
+
             except KeyboardInterrupt:
                 logger.info(f"Service agent {agent.name} interrupted by user")
                 break
-                
+
             except Exception as e:
                 restart_count += 1
                 delay = base_delay * restart_count
-                
+
                 logger.error(
                     f"Service agent {agent.name} crashed (attempt {restart_count}/{max_restarts}): {e}",
-                    exc_info=True
+                    exc_info=True,
                 )
-                
+
                 # Send notification
                 try:
                     await agent.notify(
@@ -187,12 +185,14 @@ class AgentPlatform:
                     )
                 except Exception:
                     pass
-                
+
                 if restart_count < max_restarts:
                     logger.info(f"Restarting in {delay} seconds...")
                     await asyncio.sleep(delay)
                 else:
-                    logger.error(f"Service agent {agent.name} exceeded max restarts, giving up")
+                    logger.error(
+                        f"Service agent {agent.name} exceeded max restarts, giving up"
+                    )
                     try:
                         await agent.notify(
                             f"❌ Service agent {agent.name} failed permanently after {max_restarts} restart attempts"
@@ -208,7 +208,7 @@ class AgentPlatform:
             "ollama": await self.llm.health_check(),
             "brain_path": self.brain_io.get_brain_path().exists(),
         }
-        
+
         logger.info(f"Health check: {health}")
         return health
 

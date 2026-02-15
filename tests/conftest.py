@@ -22,6 +22,7 @@ from typing import Dict, List, Any
 # Async Event Loop Management
 # ============================================================================
 
+
 @pytest.fixture(scope="session")
 def event_loop():
     """
@@ -41,6 +42,7 @@ def event_loop():
 # ============================================================================
 # File System Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def test_brain_path(tmp_path) -> Path:
@@ -68,6 +70,7 @@ def test_brain_path(tmp_path) -> Path:
 # Slack Event Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def sample_slack_event() -> Dict[str, Any]:
     """
@@ -86,7 +89,7 @@ def sample_slack_event() -> Dict[str, Any]:
         "text": "Hello, bot!",
         "ts": "1234567890.123456",
         "channel": "C01TEST",
-        "type": "message"
+        "type": "message",
     }
 
 
@@ -106,29 +109,30 @@ def sample_conversation() -> List[Dict[str, str]]:
         {
             "role": "user",
             "content": "What is ADHD?",
-            "timestamp": "2026-02-14T10:00:00"
+            "timestamp": "2026-02-14T10:00:00",
         },
         {
             "role": "assistant",
             "content": "ADHD is a neurodevelopmental disorder characterized by persistent inattention and/or hyperactivity-impulsivity.",
-            "timestamp": "2026-02-14T10:00:15"
+            "timestamp": "2026-02-14T10:00:15",
         },
         {
             "role": "user",
             "content": "How can I manage it?",
-            "timestamp": "2026-02-14T10:01:00"
+            "timestamp": "2026-02-14T10:01:00",
         },
         {
             "role": "assistant",
             "content": "You can manage ADHD through medication, therapy, lifestyle changes, and structured routines.",
-            "timestamp": "2026-02-14T10:01:25"
-        }
+            "timestamp": "2026-02-14T10:01:25",
+        },
     ]
 
 
 # ============================================================================
 # LLM Client Mocks
 # ============================================================================
+
 
 @pytest.fixture
 def mock_llm() -> AsyncMock:
@@ -154,6 +158,7 @@ def mock_llm() -> AsyncMock:
 # Khoj Client Mocks
 # ============================================================================
 
+
 @pytest.fixture
 def mock_khoj() -> AsyncMock:
     """
@@ -172,14 +177,14 @@ def mock_khoj() -> AsyncMock:
             "entry": "Sample brain entry about productivity and time management",
             "score": 0.95,
             "file": "journal/2026-02-10.md",
-            "heading": "Morning Reflection"
+            "heading": "Morning Reflection",
         },
         {
             "entry": "Notes on personal development and growth strategies",
             "score": 0.87,
             "file": "journal/2026-02-09.md",
-            "heading": "Weekly Review"
-        }
+            "heading": "Weekly Review",
+        },
     ]
     mock.health_check.return_value = True
     return mock
@@ -188,6 +193,7 @@ def mock_khoj() -> AsyncMock:
 # ============================================================================
 # Slack App Mocks
 # ============================================================================
+
 
 @pytest.fixture
 def mock_slack_app() -> MagicMock:
@@ -231,6 +237,7 @@ def mock_slack_app() -> MagicMock:
 # Notification Mocks
 # ============================================================================
 
+
 @pytest.fixture
 def mock_ntfy():
     """
@@ -243,7 +250,7 @@ def mock_ntfy():
     Yields:
         MagicMock: Patched subprocess.run for ntfy notification captures
     """
-    with patch('subprocess.run') as mock_run:
+    with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         yield mock_run
 
@@ -251,6 +258,7 @@ def mock_ntfy():
 # ============================================================================
 # Remote Test Fixtures (SSH)
 # ============================================================================
+
 
 @pytest.fixture(scope="session")
 def ssh_nuc2():
@@ -321,6 +329,7 @@ def remote_test_brain(ssh_nuc2) -> str:
 # Parametrization Helpers
 # ============================================================================
 
+
 @pytest.fixture(params=["U01TEST123", "U02TEST456", "U03TEST789"])
 def multiple_users(request) -> str:
     """
@@ -338,11 +347,13 @@ def multiple_users(request) -> str:
     return request.param
 
 
-@pytest.fixture(params=[
-    {"text": "hello", "type": "message", "user": "U01TEST"},
-    {"text": "", "type": "message", "user": "U01TEST"},
-    {"text": "test", "type": "app_mention", "user": "U01TEST"}
-])
+@pytest.fixture(
+    params=[
+        {"text": "hello", "type": "message", "user": "U01TEST"},
+        {"text": "", "type": "message", "user": "U01TEST"},
+        {"text": "test", "type": "app_mention", "user": "U01TEST"},
+    ]
+)
 def slack_event_variants(request) -> Dict[str, Any]:
     """
     Parametrized fixture providing various Slack event types.
@@ -361,6 +372,6 @@ def slack_event_variants(request) -> Dict[str, Any]:
         "user": request.param.get("user", "U01TEST123"),
         "ts": "1234567890.123456",
         "channel": "C01TEST",
-        **request.param
+        **request.param,
     }
     return event

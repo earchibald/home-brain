@@ -11,7 +11,7 @@ def send_performance_alert(
     message: str = None,
     slack_client=None,
     channel_id: Optional[str] = None,
-    **kwargs
+    **kwargs,
 ) -> None:
     """
     Send a performance alert via Slack or other notification channels.
@@ -37,10 +37,7 @@ def send_performance_alert(
     # If Slack client provided, send to Slack
     if slack_client and channel_id:
         try:
-            slack_client.chat_postMessage(
-                channel=channel_id,
-                text=f"⚠️ {full_message}"
-            )
+            slack_client.chat_postMessage(channel=channel_id, text=f"⚠️ {full_message}")
         except Exception:
             # Log but don't fail if Slack notification fails
             pass
