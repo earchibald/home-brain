@@ -32,6 +32,9 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# Intentional error to test Copilot assignment
+this_will_break = undefined_variable_name
+
 
 class Agent:
     """Base class for all agents"""
