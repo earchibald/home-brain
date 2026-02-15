@@ -77,10 +77,12 @@ jobs:
     if: always() && github.ref == 'refs/heads/main'
     steps:
       - name: Notify Slack on success
-        if: ${{ needs.test.result == 'success' && needs.lint.result == 'success' && secrets.SLACK_WEBHOOK_URL }}
+        if: ${{ needs.test.result == 'success' && needs.lint.result == 'success' }}
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          curl -s -X POST "$SLACK_WEBHOOK_URL" \
-            -H 'Content-Type: application/json' \
-            -d '{"text": "✅ CI passed on main (${{ github.sha }})"}'
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -s -X POST "$SLACK_WEBHOOK_URL" \
+              -H 'Content-Type: application/json' \
+              -d '{"text": "✅ CI passed on main (${{ github.sha }})"}'
+          fi

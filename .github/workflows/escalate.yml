@@ -94,21 +94,22 @@ jobs:
             core.setOutput('issue_number', issue.data.number);
 
       - name: Notify Slack
-        if: ${{ secrets.SLACK_WEBHOOK_URL }}
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          curl -s -X POST "$SLACK_WEBHOOK_URL" \
-            -H 'Content-Type: application/json' \
-            -d "{
-              \"text\": \"🔴 CI Failed on main — issue created and assigned to Copilot\",
-              \"blocks\": [
-                {
-                  \"type\": \"section\",
-                  \"text\": {
-                    \"type\": \"mrkdwn\",
-                    \"text\": \"*CI Failure on \`${{ steps.context.outputs.branch }}\`*\n\nCommit: \`${{ steps.context.outputs.commit_sha }}\`\nCI Run: ${{ steps.context.outputs.run_url }}\n\nA GitHub issue has been created and assigned to Copilot for auto-fix.\"
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -s -X POST "$SLACK_WEBHOOK_URL" \
+              -H 'Content-Type: application/json' \
+              -d "{
+                \"text\": \"🔴 CI Failed on main — issue created and assigned to Copilot\",
+                \"blocks\": [
+                  {
+                    \"type\": \"section\",
+                    \"text\": {
+                      \"type\": \"mrkdwn\",
+                      \"text\": \"*CI Failure on \`${{ steps.context.outputs.branch }}\`*\n\nCommit: \`${{ steps.context.outputs.commit_sha }}\`\nCI Run: ${{ steps.context.outputs.run_url }}\n\nA GitHub issue has been created and assigned to Copilot for auto-fix.\"
+                    }
                   }
-                }
-              ]
-            }"
+                ]
+              }"
+          fi
