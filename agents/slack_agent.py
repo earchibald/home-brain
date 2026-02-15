@@ -32,11 +32,15 @@ from clients.conversation_manager import ConversationManager
 from slack_bot.message_processor import detect_file_attachments
 from slack_bot.file_handler import download_file_from_slack, extract_text_content
 from slack_bot.performance_monitor import PerformanceMonitor
+from slack_bot.model_selector import build_model_selector_ui, apply_model_selection
 from slack_bot.exceptions import (
     FileDownloadError,
     UnsupportedFileTypeError,
     FileExtractionError,
 )
+
+# Import model switching components
+from services.model_manager import ModelManager
 
 
 class SlackAgent(Agent):
@@ -138,6 +142,15 @@ You're not just answering questions—you're helping build and navigate a system
         self.performance_monitor = PerformanceMonitor(
             slow_threshold_seconds=config.get("slow_response_threshold", 30.0)
         )
+
+        # Initialize model manager for dynamic provider switching
+        self.model_manager = ModelManager()
+        self.enable_model_switching = config.get("enable_model_switching", False)
+        if self.enable_model_switching:
+            self.model_manager.discover_available_sources()
+            self.logger.info(
+                f"Model switching enabled. Available providers: {list(self.model_manager.providers.keys())}"
+            )
 
         # Feature flags
         self.enable_file_attachments = config.get("enable_file_attachments", True)
@@ -258,6 +271,77 @@ You're not just answering questions—you're helping build and navigate a system
         async def handle_mention(event, say):
             """Handle @mentions (future: support channel conversations)"""
             await say("Hi! For now, please DM me directly for conversations.")
+
+        @self.app.command("/model")
+        async def handle_model_command(ack, respond, command):
+            """Handle /model command for dynamic model switching"""
+            await ack()
+
+            if not self.enable_model_switching:
+                await respond(
+                    text="⚠️ Model switching is not enabled in this bot configuration.",
+                    response_type="ephemeral",
+                )
+                return
+
+            try:
+                # Refresh provider discovery
+                self.model_manager.discover_available_sources()
+
+                # Build UI
+                blocks = build_model_selector_ui(self.model_manager)
+
+                await respond(
+                    text="Model Selection",
+                    blocks=blocks,
+                    response_type="ephemeral",
+                )
+                self.logger.info(f"User {command['user_id']} opened /model UI")
+
+            except Exception as e:
+                self.logger.error(f"Error handling /model command: {e}", exc_info=True)
+                await respond(
+                    text=f"⚠️ Error loading model selector: {str(e)}",
+                    response_type="ephemeral",
+                )
+
+        @self.app.action("select_model")
+        async def handle_model_selection(ack, action, respond):
+            """Handle model selection from dropdown"""
+            await ack()
+
+            if not self.enable_model_switching:
+                return
+
+            try:
+                # Parse selection value (format: "provider_id:model_name")
+                selected_value = action["selected_option"]["value"]
+                provider_id, model_name = selected_value.split(":", 1)
+
+                # Apply selection
+                result = apply_model_selection(self.model_manager, provider_id, model_name)
+
+                if result["success"]:
+                    await respond(
+                        text=f"✅ Switched to {provider_id}: {model_name}",
+                        response_type="ephemeral",
+                        replace_original=False,
+                    )
+                    self.logger.info(f"Model switched to {provider_id}:{model_name}")
+                else:
+                    await respond(
+                        text=f"⚠️ {result.get('error', 'Failed to switch model')}",
+                        response_type="ephemeral",
+                        replace_original=False,
+                    )
+
+            except Exception as e:
+                self.logger.error(f"Error handling model selection: {e}", exc_info=True)
+                await respond(
+                    text=f"⚠️ Error: {str(e)}",
+                    response_type="ephemeral",
+                    replace_original=False,
+                )
 
     async def _process_file_attachment(
         self, attachment: Dict, channel_id: str, user_id: str

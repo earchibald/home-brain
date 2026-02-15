@@ -1,0 +1,152 @@
+"""
+ModelManager - Service for managing LLM provider discovery and switching.
+
+Acts as the state machine for the dynamic model source switching feature.
+"""
+
+import os
+from typing import Dict, Optional
+from providers.base import BaseProvider
+from providers.ollama_adapter import OllamaProvider
+from providers.gemini_adapter import GeminiProvider
+from providers.anthropic_adapter import AnthropicProvider
+
+
+class ModelManager:
+    """
+    Manages LLM providers and handles switching between them.
+
+    Implements discovery of available providers (local Ollama, remote Ollama, cloud APIs)
+    and provides a unified interface for model selection and text generation.
+    """
+
+    def __init__(self):
+        """Initialize ModelManager with empty state"""
+        self.providers: Dict[str, BaseProvider] = {}
+        self.current_provider_id: Optional[str] = None
+        self.current_model_name: Optional[str] = None
+
+    def discover_available_sources(self):
+        """
+        Discover and register available LLM providers.
+
+        Checks:
+        - Local Ollama (localhost:11434)
+        - Remote Ollama (eugenes-mbp.local:11434)
+        - Google Gemini API (if GOOGLE_API_KEY is set)
+        - Anthropic Claude API (if ANTHROPIC_API_KEY is set)
+        """
+        # Check local Ollama
+        try:
+            local_ollama = OllamaProvider(base_url="http://localhost:11434")
+            if local_ollama.health_check():
+                self.providers["ollama_local"] = local_ollama
+        except Exception:
+            pass
+
+        # Check remote Ollama
+        try:
+            remote_ollama = OllamaProvider(base_url="http://eugenes-mbp.local:11434")
+            if remote_ollama.health_check():
+                remote_ollama.id = "ollama_remote"
+                remote_ollama.name = "Ollama (Remote - MBP)"
+                self.providers["ollama_remote"] = remote_ollama
+        except Exception:
+            pass
+
+        # Check Google Gemini
+        if os.getenv("GOOGLE_API_KEY"):
+            try:
+                gemini = GeminiProvider()
+                self.providers["gemini"] = gemini
+            except Exception:
+                pass
+
+        # Check Anthropic Claude
+        if os.getenv("ANTHROPIC_API_KEY"):
+            try:
+                anthropic = AnthropicProvider()
+                self.providers["anthropic"] = anthropic
+            except Exception:
+                pass
+
+    def set_model(self, provider_id: str, model_name: str):
+        """
+        Set the current active provider and model.
+
+        Args:
+            provider_id: ID of the provider (e.g., "ollama_local", "gemini")
+            model_name: Name of the model to use
+
+        Raises:
+            ValueError: If provider_id is not in available providers
+        """
+        if provider_id not in self.providers:
+            raise ValueError(
+                f"Provider '{provider_id}' not available. "
+                f"Available providers: {list(self.providers.keys())}"
+            )
+
+        self.current_provider_id = provider_id
+        self.current_model_name = model_name
+
+    def generate(self, prompt: str, system_prompt: str = None) -> str:
+        """
+        Generate text using the current provider.
+
+        Args:
+            prompt: User prompt/question
+            system_prompt: Optional system instructions
+
+        Returns:
+            str: Generated response
+
+        Raises:
+            ValueError: If no provider is currently selected
+        """
+        if not self.current_provider_id:
+            raise ValueError(
+                "No provider currently selected. Call set_model() first."
+            )
+
+        provider = self.providers[self.current_provider_id]
+        return provider.generate(prompt, system_prompt)
+
+    def get_current_config(self) -> dict:
+        """
+        Get current configuration information.
+
+        Returns:
+            dict: Current provider_id, model_name, and provider_name
+        """
+        if not self.current_provider_id:
+            return {
+                "provider_id": None,
+                "model_name": None,
+                "provider_name": None,
+            }
+
+        provider = self.providers[self.current_provider_id]
+        return {
+            "provider_id": self.current_provider_id,
+            "model_name": self.current_model_name,
+            "provider_name": provider.name,
+        }
+
+    def get_available_providers(self) -> list[dict]:
+        """
+        Get list of available providers with their models.
+
+        Returns:
+            list[dict]: List of provider information dicts
+        """
+        result = []
+        for provider_id, provider in self.providers.items():
+            result.append(
+                {
+                    "id": provider_id,
+                    "name": provider.name,
+                    "models": provider.list_models(),
+                }
+            )
+        return result
