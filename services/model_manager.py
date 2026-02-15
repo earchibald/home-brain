@@ -56,13 +56,13 @@ class ModelManager:
                 pass
 
         # Check Mac Mini Ollama (should be different from configured)
-        mac_mini_url = "http://eugenes-mbp.local:11434"
+        mac_mini_url = "http://m1-mini.local:11434"
         if mac_mini_url != ollama_url:  # Don't check if it's already the configured one
             try:
                 mac_mini = OllamaProvider(base_url=mac_mini_url)
                 if mac_mini.health_check():
                     mac_mini.id = "ollama_mac_mini"
-                    mac_mini.name = "Ollama (Mac Mini - eugenes-mbp.local)"
+                    mac_mini.name = "Ollama (Mac Mini - m1-mini.local)"
                     self.providers["ollama_mac_mini"] = mac_mini
             except Exception:
                 pass
