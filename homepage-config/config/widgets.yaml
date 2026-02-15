@@ -1,0 +1,17 @@
+- clock:
+    format: "hh:mm A"
+    timezone: "America/New_York"
+
+- search:
+    provider: "duckduckgo"
+    target: "_blank"
+
+- weather:
+    provider: "weatherapi"
+    apiKey: "YOUR_API_KEY" # Needs to be replaced
+    latitude: "40.7128"
+    longitude: "-74.0060"
+    units: "imperial"
+
+- caddy:
+    url: http://nuc-1.local:2019

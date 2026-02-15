@@ -98,7 +98,7 @@ def build_model_selector_ui(manager: ModelManager) -> List[Dict]:
                 {
                     "text": {
                         "type": "plain_text",
-                        "text": f"{provider_short}: {model_display}",
+                        "text": f"{model_display} - {provider_short}",
                     },
                     "value": f"{provider['id']}:{model}",
                 }
