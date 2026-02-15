@@ -117,9 +117,9 @@ Be concise but thorough. If you don't know something, say so rather than making 
                 if bot_id not in allowed_bot_ids or not bot_id:
                     return
 
-            # Only respond to DMs (channel type = "im")
+            # Accept DMs and public channel messages (for E2E testing)
             channel_type = event.get("channel_type")
-            if channel_type != "im":
+            if channel_type not in ["im", "public_channel"]:
                 return
 
             user_id = event.get("user")
