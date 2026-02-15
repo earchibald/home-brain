@@ -6,7 +6,6 @@ imports that require external resources (brain folders, services).
 """
 
 import pytest
-import sys
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import os

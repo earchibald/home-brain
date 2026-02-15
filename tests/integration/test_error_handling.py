@@ -11,15 +11,12 @@ Tests for error scenarios and recovery including:
 """
 
 import pytest
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch, call
-from typing import Dict, Any
+from unittest.mock import AsyncMock, MagicMock, patch
 import logging
 
 # Add parent directories to path for imports
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 # Set test brain path before ANY imports
 test_brain_path = Path(__file__).parent.parent / 'test_brain'
@@ -34,7 +31,6 @@ mock_brain_io.BrainIO = MagicMock(return_value=MagicMock())
 sys.modules['brain_io'] = mock_brain_io
 
 # Now we can import llm_client and SlackAgent
-from clients.llm_client import Message
 
 def get_slack_agent():
     """Lazy import to ensure mocks are in place"""
@@ -203,7 +199,6 @@ class TestErrorHandlingAndResilience:
         - Error message sent via say()
         - No orphaned working indicators
         """
-        agent = agent_with_mocks
 
         # This test verifies the error path cleanup logic
         working_ts = "1234567890.999999"
@@ -292,7 +287,7 @@ class TestErrorHandlingAndResilience:
         - Max restarts enforced
         """
         AgentPlatform = get_agent_platform()
-        platform = AgentPlatform()
+        AgentPlatform()
 
         # Create a mock agent that fails first time
         mock_agent = AsyncMock()

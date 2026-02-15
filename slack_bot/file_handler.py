@@ -2,7 +2,6 @@
 File handler for downloading and extracting text from various file types.
 """
 
-from typing import Union
 import requests
 import logging
 from slack_bot.exceptions import (
@@ -41,7 +40,7 @@ def download_file_from_slack(url: str, token: str) -> bytes:
 
         # If unauthorized, try without auth (some URLs don't need it)
         if response.status_code == 401:
-            logger.warning(f"Bearer auth failed (401), retrying without auth with redirects")
+            logger.warning("Bearer auth failed (401), retrying without auth with redirects")
             response = requests.get(url, timeout=30, allow_redirects=True)
 
         response.raise_for_status()

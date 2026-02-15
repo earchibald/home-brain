@@ -2,7 +2,6 @@
 Streaming handler for processing chunks from Ollama and finalizing responses.
 """
 
-from typing import Optional
 
 
 def process_stream_chunk(chunk: str) -> str:

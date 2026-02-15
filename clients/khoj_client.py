@@ -3,7 +3,6 @@ Khoj Client - Query and interact with Khoj semantic search engine on NUC-1
 """
 
 import httpx
-import json
 import logging
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
@@ -143,7 +142,7 @@ class KhojClient:
             Dict with activity stats
         """
         # Query for recent files (this is a heuristic search)
-        query = f"recent created modified updated"
+        query = "recent created modified updated"
         results = await self.search(query, limit=20)
         
         if folder:

@@ -3,15 +3,13 @@ RED tests for performance alerts and monitoring functionality.
 These tests are expected to fail initially as the feature is not yet implemented.
 """
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-import time
+from unittest.mock import Mock, patch
 
 
 @pytest.mark.red
 def test_slow_response_alert_sent():
     """Test that an alert is sent when response time exceeds threshold."""
     from slack_bot.performance_monitor import PerformanceMonitor
-    from slack_bot.alerting import send_performance_alert
 
     mock_slack_client = Mock()
 

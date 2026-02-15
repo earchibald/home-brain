@@ -5,10 +5,9 @@ Agent Platform - Core framework for running autonomous agents on NUC-2
 import asyncio
 import logging
 import sys
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Callable
 from datetime import datetime
 from pathlib import Path
-import yaml
 import json
 
 # Add clients to path
@@ -186,7 +185,7 @@ class AgentPlatform:
                     await agent.notify(
                         f"⚠️ Service agent {agent.name} crashed (restart {restart_count}/{max_restarts}): {e}"
                     )
-                except:
+                except Exception:
                     pass
                 
                 if restart_count < max_restarts:
@@ -198,7 +197,7 @@ class AgentPlatform:
                         await agent.notify(
                             f"❌ Service agent {agent.name} failed permanently after {max_restarts} restart attempts"
                         )
-                    except:
+                    except Exception:
                         pass
                     raise
 

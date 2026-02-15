@@ -3,9 +3,7 @@ RED tests for file attachment functionality.
 These tests are expected to fail initially as the feature is not yet implemented.
 """
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-import io
-import requests
+from unittest.mock import Mock, patch
 
 
 @pytest.mark.red

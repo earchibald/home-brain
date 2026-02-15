@@ -2,7 +2,6 @@
 Brain I/O - File system operations for the brain folder on Syncthing
 """
 
-import os
 import asyncio
 import logging
 from pathlib import Path
@@ -224,7 +223,7 @@ class BrainIO:
         Returns:
             List of recent files (relative paths)
         """
-        from datetime import datetime, timedelta
+        from datetime import timedelta
         
         cutoff_time = (datetime.now() - timedelta(hours=hours)).timestamp()
         recent = []

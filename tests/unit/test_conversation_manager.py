@@ -13,10 +13,7 @@ Tests verify:
 """
 
 import pytest
-import json
-from pathlib import Path
-from datetime import datetime
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock
 
 from clients.conversation_manager import ConversationManager
 

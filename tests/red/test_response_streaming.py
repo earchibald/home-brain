@@ -3,8 +3,7 @@ RED tests for response streaming functionality.
 These tests are expected to fail initially as the feature is not yet implemented.
 """
 import pytest
-from unittest.mock import Mock, patch, MagicMock, call
-import asyncio
+from unittest.mock import Mock, patch, MagicMock
 import time
 
 
@@ -22,7 +21,7 @@ def test_ollama_streaming_enabled():
         )
 
         # Generate a streaming response
-        response = client.generate('Test prompt', stream=True)
+        client.generate('Test prompt', stream=True)
 
         # Verify streaming was requested
         assert mock_post.called
@@ -142,7 +141,7 @@ def test_update_frequency_reasonable():
         stream_generator=mock_stream()
     )
 
-    elapsed = time.time() - start_time
+    time.time() - start_time
 
     # Verify updates were batched appropriately (not every chunk)
     update_count = mock_slack_client.chat_update.call_count

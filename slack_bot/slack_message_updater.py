@@ -2,7 +2,7 @@
 Slack message updater for incrementally updating messages with streaming content.
 """
 
-from typing import Optional, Generator
+from typing import Generator
 import time
 
 
@@ -32,7 +32,7 @@ def update_message_with_stream(
             ts=message_ts,
             text=content
         )
-    except Exception as e:
+    except Exception:
         # Log but don't fail - streaming continues even if update fails
         pass
 
