@@ -45,8 +45,24 @@ def download_file_from_slack(url: str, token: str) -> bytes:
             response = requests.get(url, timeout=30, allow_redirects=True)
 
         response.raise_for_status()
+
+        # Detect empty responses
+        if not response.content:
+            raise FileDownloadError("Empty response from Slack file download")
+
+        # Detect HTML error/login pages (redirect landed on a web page, not a file)
+        content_type = response.headers.get('Content-Type', '')
+        if 'text/html' in content_type:
+            logger.error(f"Got HTML response instead of file (redirected to {response.url[:100]})")
+            raise FileDownloadError(
+                f"Got HTML response instead of file content — "
+                f"possible auth redirect to {response.url[:100]}"
+            )
+
         logger.info(f"Downloaded {len(response.content)} bytes from Slack (final status: {response.status_code}, url: {response.url[:100]})")
         return response.content
+    except FileDownloadError:
+        raise
     except requests.RequestException as e:
         raise FileDownloadError(f"Failed to download file from Slack: {e}")
     except Exception as e:

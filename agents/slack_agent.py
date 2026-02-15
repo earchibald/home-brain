@@ -157,7 +157,7 @@ Be concise but thorough. If you don't know something, say so rather than making 
                     self.logger.warning(f"Failed to send working indicator: {e}")
 
                 # Process message (this is slow - LLM inference)
-                response = await self._process_message(user_id, text, thread_ts)
+                response = await self._process_message(user_id, text, thread_ts, user_message=user_message)
 
                 # Delete working message if we successfully sent it
                 if working_ts:
@@ -245,16 +245,18 @@ Be concise but thorough. If you don't know something, say so rather than making 
         self,
         user_id: str,
         text: str,
-        thread_id: str
+        thread_id: str,
+        user_message: str = ""
     ) -> str:
         """
         Process incoming message and generate response
-        
+
         Args:
             user_id: Slack user ID
-            text: Message text
+            text: Message text (may include file attachment content)
             thread_id: Thread timestamp
-            
+            user_message: Original user message (without attachments), used for Khoj search
+
         Returns:
             Response text
         """
