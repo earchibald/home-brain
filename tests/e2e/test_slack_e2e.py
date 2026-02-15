@@ -31,17 +31,17 @@ SLACK_TEST_BOT_TOKEN = os.getenv("SLACK_TEST_BOT_TOKEN")
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
 BRAIN_BOT_USER_ID = os.getenv("BRAIN_BOT_USER_ID")
 TEST_BOT_USER_ID = os.getenv("TEST_BOT_USER_ID")
-E2E_TEST_CHANNEL = os.getenv("E2E_TEST_CHANNEL", "test-e2e-brain-assistant")
+E2E_TEST_CHANNEL_ID = os.getenv("E2E_TEST_CHANNEL_ID")
 
 # Check if all required tokens are present
 has_all_tokens = all(
-    [SLACK_TEST_BOT_TOKEN, SLACK_BOT_TOKEN, BRAIN_BOT_USER_ID, TEST_BOT_USER_ID]
+    [SLACK_TEST_BOT_TOKEN, SLACK_BOT_TOKEN, BRAIN_BOT_USER_ID, TEST_BOT_USER_ID, E2E_TEST_CHANNEL_ID]
 )
 
 # Skip reason message
 skip_reason = (
     "E2E tests require SLACK_TEST_BOT_TOKEN, SLACK_BOT_TOKEN, "
-    "BRAIN_BOT_USER_ID, and TEST_BOT_USER_ID environment variables"
+    "BRAIN_BOT_USER_ID, TEST_BOT_USER_ID, and E2E_TEST_CHANNEL_ID environment variables"
 )
 
 
@@ -62,43 +62,17 @@ def brain_bot_client() -> Optional[WebClient]:
 
 
 @pytest.fixture
-def test_channel(test_bot_client: WebClient) -> str:
+def test_channel() -> str:
     """
-    Get or create a test channel for E2E testing.
+    Return the pre-configured test channel ID.
     
-    Uses a shared channel instead of DMs to avoid bot-to-bot DM limitations.
+    The channel must be created manually and both test and brain bots
+    must be members of it. This avoids needing additional Slack scopes.
+    
     Returns:
-        str: Channel ID (e.g., "C01234ABCD")
+        str: Channel ID from E2E_TEST_CHANNEL_ID env var
     """
-    try:
-        # Try to find existing channel
-        response = test_bot_client.conversations_list(
-            exclude_archived=True,
-            types="private_channel"
-        )
-        
-        for channel in response.get("channels", []):
-            if channel["name"] == E2E_TEST_CHANNEL:
-                channel_id = channel["id"]
-                return channel_id
-        
-        # Channel doesn't exist, create it
-        create_response = test_bot_client.conversations_create(
-            name=E2E_TEST_CHANNEL,
-            is_private=True
-        )
-        channel_id = create_response["channel"]["id"]
-        
-        # Invite Brain Assistant bot to channel (use user ID)
-        test_bot_client.conversations_invite(
-            channel=channel_id,
-            users=[BRAIN_BOT_USER_ID]
-        )
-        
-        return channel_id
-        
-    except SlackApiError as e:
-        pytest.fail(f"Failed to setup test channel: {e.response['error']}")
+    return E2E_TEST_CHANNEL_ID
 
 
 

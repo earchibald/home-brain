@@ -42,12 +42,14 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           BRAIN_BOT_USER_ID: ${{ secrets.BRAIN_BOT_USER_ID }}
           TEST_BOT_USER_ID: ${{ secrets.TEST_BOT_USER_ID }}
+          E2E_TEST_CHANNEL_ID: ${{ secrets.E2E_TEST_CHANNEL_ID }}
         run: |
           echo "Checking environment variables..."
           [ -n "$SLACK_TEST_BOT_TOKEN" ] && echo "✓ SLACK_TEST_BOT_TOKEN is set" || echo "✗ SLACK_TEST_BOT_TOKEN is EMPTY"
           [ -n "$SLACK_BOT_TOKEN" ] && echo "✓ SLACK_BOT_TOKEN is set" || echo "✗ SLACK_BOT_TOKEN is EMPTY"
           [ -n "$BRAIN_BOT_USER_ID" ] && echo "✓ BRAIN_BOT_USER_ID is set" || echo "✗ BRAIN_BOT_USER_ID is EMPTY"
           [ -n "$TEST_BOT_USER_ID" ] && echo "✓ TEST_BOT_USER_ID is set" || echo "✗ TEST_BOT_USER_ID is EMPTY"
+          [ -n "$E2E_TEST_CHANNEL_ID" ] && echo "✓ E2E_TEST_CHANNEL_ID is set" || echo "✗ E2E_TEST_CHANNEL_ID is EMPTY"
 
       - name: Run E2E tests
         id: e2e_tests
@@ -56,6 +58,7 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           BRAIN_BOT_USER_ID: ${{ secrets.BRAIN_BOT_USER_ID }}
           TEST_BOT_USER_ID: ${{ secrets.TEST_BOT_USER_ID }}
+          E2E_TEST_CHANNEL_ID: ${{ secrets.E2E_TEST_CHANNEL_ID }}
         run: |
           set -o pipefail
           mkdir -p test-results
