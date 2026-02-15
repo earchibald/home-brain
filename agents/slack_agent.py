@@ -27,6 +27,7 @@ from clients.semantic_search_client import SemanticSearchClient
 from clients.llm_client import OllamaClient, Message
 from clients.brain_io import BrainIO
 from clients.conversation_manager import ConversationManager
+from clients.vaultwarden_client import get_secret
 
 # Import new slack_bot modules for enhanced features
 from slack_bot.message_processor import detect_file_attachments
@@ -49,13 +50,19 @@ class SlackAgent(Agent):
     def __init__(self, config: Dict):
         super().__init__("slack_agent", config)
 
-        # Slack setup
-        self.bot_token = os.getenv("SLACK_BOT_TOKEN")
-        self.app_token = os.getenv("SLACK_APP_TOKEN")
+        # Slack setup - load from Vaultwarden
+        try:
+            self.bot_token = get_secret("SLACK_BOT_TOKEN")
+            self.app_token = get_secret("SLACK_APP_TOKEN")
+        except Exception as e:
+            raise ValueError(
+                f"Failed to load Slack tokens from Vaultwarden: {e}\n"
+                "Ensure secrets are added to Vaultwarden and VAULTWARDEN_TOKEN is set."
+            )
 
         if not self.bot_token or not self.app_token:
             raise ValueError(
-                "Missing Slack tokens. Set SLACK_BOT_TOKEN and SLACK_APP_TOKEN in environment."
+                "Missing Slack tokens in Vaultwarden. Add SLACK_BOT_TOKEN and SLACK_APP_TOKEN."
             )
 
         # Initialize Slack app
