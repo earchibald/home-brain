@@ -219,8 +219,16 @@ class AgentPlatform:
         await self.llm.close()
 
 
-# Global platform instance
-platform = AgentPlatform()
+# Global platform instance (lazy initialization)
+_platform_instance = None
+
+
+def get_platform() -> AgentPlatform:
+    """Get or create the global platform instance"""
+    global _platform_instance
+    if _platform_instance is None:
+        _platform_instance = AgentPlatform()
+    return _platform_instance
 
 
 async def main():
@@ -228,18 +236,19 @@ async def main():
     # Register built-in agents
     from agents.journal_agent import JournalAgent
     from agents.advice_agent import AdviceAgent
-    
+
+    platform = get_platform()
     platform.register_agent("journal", JournalAgent)
     platform.register_agent("advice", AdviceAgent)
-    
+
     # Check health
     health = await platform.health_check()
     logger.info(f"System health: {health}")
-    
+
     if not all(health.values()):
         logger.error("System health check failed!")
         return False
-    
+
     # Parse command line arguments
     if len(sys.argv) > 1:
         agent_name = sys.argv[1]
@@ -247,7 +256,7 @@ async def main():
     else:
         logger.info("Usage: python -m agent_platform [agent_name]")
         result = False
-    
+
     await platform.close()
     return result
 
