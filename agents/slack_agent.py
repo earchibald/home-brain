@@ -122,6 +122,9 @@ Be concise but thorough. If you don't know something, say so rather than making 
             thread_ts = event.get("thread_ts", event.get("ts"))
             channel_id = event.get("channel")
 
+            self.logger.debug(f"Message event keys: {list(event.keys())}")
+            self.logger.debug(f"Message has 'files' key: {'files' in event}")
+
             # Handle file attachments if present
             file_content = ""
             if self.enable_file_attachments:
@@ -281,10 +284,11 @@ Be concise but thorough. If you don't know something, say so rather than making 
                 if search_results:
                     context = "\n\n**Relevant context from your brain:**\n"
                     for i, result in enumerate(search_results, 1):
-                        snippet = result.get("snippet", "")[:200]
-                        file_name = result.get("file", "")
+                        # SearchResult is a dataclass with attributes, not a dict
+                        snippet = result.entry[:200] if hasattr(result, 'entry') else ""
+                        file_name = result.file if hasattr(result, 'file') else ""
                         context += f"\n{i}. {snippet}...\n   (Source: {file_name})\n"
-                    
+
                     self.logger.info(f"Found {len(search_results)} relevant brain entries")
                     
             except Exception as e:
