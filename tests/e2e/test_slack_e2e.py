@@ -117,8 +117,15 @@ def wait_for_response(
                     continue
 
                 # Look for message from Brain Assistant
-                # Bot messages have bot_id, user messages have user
-                if user_id == BRAIN_BOT_USER_ID or bot_id:
+                # Bot messages have bot_id field, direct messages from bots have user field
+                # We need to check both cases to handle different message types
+                is_from_brain_bot = user_id == BRAIN_BOT_USER_ID
+                # Note: We can't check bot_id == BRAIN_BOT_USER_ID because bot_id is different
+                # from user_id. For now, accept any bot message that's not from test bot.
+                # In practice, only Brain Assistant should be responding in this DM.
+                is_bot_response = bot_id and user_id != TEST_BOT_USER_ID
+                
+                if is_from_brain_bot or is_bot_response:
                     return msg
 
             # No response yet, wait and retry
@@ -266,9 +273,7 @@ class TestSlackBotE2E:
             pytest.fail(f"Failed to upload file: {e.response['error']}")
         finally:
             # Clean up temporary file
-            import os as os_module
-
-            os_module.unlink(tmp_path)
+            os.unlink(tmp_path)
 
         # Wait for response (file processing takes longer)
         print("⏳ Waiting for bot response (file processing)...")

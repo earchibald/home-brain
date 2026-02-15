@@ -35,7 +35,7 @@ class TestBotMessageFiltering:
                 allowed_bot_ids = os.getenv("ALLOWED_TEST_BOT_IDS", "").split(",")
                 bot_id = event.get("bot_id", "")
                 allowed_bot_ids = [b.strip() for b in allowed_bot_ids if b.strip()]
-                should_process = bot_id in allowed_bot_ids and bot_id
+                should_process = bool(bot_id and bot_id in allowed_bot_ids)
 
         assert not should_process, "Bot message should be ignored by default"
 
@@ -60,7 +60,7 @@ class TestBotMessageFiltering:
                 allowed_bot_ids = os.getenv("ALLOWED_TEST_BOT_IDS", "").split(",")
                 bot_id = event.get("bot_id", "")
                 allowed_bot_ids = [b.strip() for b in allowed_bot_ids if b.strip()]
-                should_process = bot_id in allowed_bot_ids and bot_id
+                should_process = bool(bot_id and bot_id in allowed_bot_ids)
             else:
                 should_process = True
 
@@ -87,7 +87,7 @@ class TestBotMessageFiltering:
                 allowed_bot_ids = os.getenv("ALLOWED_TEST_BOT_IDS", "").split(",")
                 bot_id = event.get("bot_id", "")
                 allowed_bot_ids = [b.strip() for b in allowed_bot_ids if b.strip()]
-                should_process = bot_id in allowed_bot_ids and bot_id
+                should_process = bool(bot_id and bot_id in allowed_bot_ids)
 
         assert not should_process, "Non-whitelisted bot message should be ignored"
 
@@ -108,15 +108,15 @@ class TestBotMessageFiltering:
             bot_id = event1.get("bot_id", "")
             allowed_bot_ids = os.getenv("ALLOWED_TEST_BOT_IDS", "").split(",")
             allowed_bot_ids = [b.strip() for b in allowed_bot_ids if b.strip()]
-            should_process_1 = bot_id in allowed_bot_ids and bot_id
+            should_process_1 = bool(bot_id and bot_id in allowed_bot_ids)
 
             # Check second bot
             bot_id = event2.get("bot_id", "")
-            should_process_2 = bot_id in allowed_bot_ids and bot_id
+            should_process_2 = bool(bot_id and bot_id in allowed_bot_ids)
 
             # Check third bot
             bot_id = event3.get("bot_id", "")
-            should_process_3 = bot_id in allowed_bot_ids and bot_id
+            should_process_3 = bool(bot_id and bot_id in allowed_bot_ids)
 
         assert should_process_1, "First whitelisted bot should be processed"
         assert should_process_2, "Second whitelisted bot should be processed"
@@ -141,7 +141,7 @@ class TestBotMessageFiltering:
                 allowed_bot_ids = os.getenv("ALLOWED_TEST_BOT_IDS", "").split(",")
                 bot_id = event.get("bot_id", "")
                 allowed_bot_ids = [b.strip() for b in allowed_bot_ids if b.strip()]
-                should_process = bot_id in allowed_bot_ids and bot_id
+                should_process = bool(bot_id and bot_id in allowed_bot_ids)
 
         assert not should_process, "Bot message without bot_id should be ignored"
 
