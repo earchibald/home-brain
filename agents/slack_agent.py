@@ -168,6 +168,32 @@ You're not just answering questions—you're helping build and navigate a system
         # Register event handlers
         self._register_handlers()
 
+    def _is_current_model_available(self) -> bool:
+        """
+        Check if the currently configured model is available.
+
+        Returns:
+            bool: True if model is available, False otherwise
+        """
+        # If model switching is enabled, check the model_manager's selection
+        if self.enable_model_switching and self.model_manager:
+            config = self.model_manager.get_current_config()
+            # If user has already selected a model via /model, it's considered available
+            if config.get("provider_id"):
+                return True
+            # Otherwise fall through to default check
+
+        if not self.model:
+            return True  # No specific model configured, use default
+
+        try:
+            # Check if model exists in current LLM client's available models
+            available_models = self.llm.list_models()
+            return self.model in available_models
+        except Exception as e:
+            self.logger.warning(f"Failed to check model availability: {e}")
+            return False  # Assume unavailable if we can't check
+
     def _register_handlers(self):
         """Register Slack event handlers"""
 
@@ -224,6 +250,16 @@ You're not just answering questions—you're helping build and navigate a system
             )
 
             if not text:
+                return
+
+            # Check if current model is available, prompt selection if not
+            if self.enable_model_switching and not self._is_current_model_available():
+                self.logger.warning(f"Configured model not available, prompting user {user_id} to select model")
+                await say(
+                    text="⚠️ Your preferred model isn't available. Please select a model:",
+                    blocks=build_model_selector_ui(self.model_manager),
+                    response_type="ephemeral"
+                )
                 return
 
             working_ts = None

@@ -40,6 +40,23 @@ class ModelManager:
         - Google Gemini API (if GOOGLE_API_KEY is set)
         - Anthropic Claude API (if ANTHROPIC_API_KEY is set)
         """
+        import socket
+
+        def resolve_host(url: str) -> str:
+            """Extract and resolve hostname from URL to IP for deduplication."""
+            try:
+                import re
+                match = re.search(r'://([^:]+)', url)
+                if match:
+                    hostname = match.group(1)
+                    # Resolve to IP for comparison
+                    return socket.gethostbyname(hostname)
+            except Exception:
+                pass
+            return url
+
+        discovered_ips = set()
+
         # Check configured Ollama URL first (from config)
         if ollama_url:
             try:
@@ -52,30 +69,35 @@ class ModelManager:
                     configured_ollama.id = "ollama_configured"
                     configured_ollama.name = f"Ollama ({host_display})"
                     self.providers["ollama_configured"] = configured_ollama
+                    discovered_ips.add(resolve_host(ollama_url))
             except Exception:
                 pass
 
         # Check M4 Pro Laptop (eugenes-mbp)
         laptop_url = "http://eugenes-mbp.local:11434"
-        if laptop_url != ollama_url:  # Don't check if it's already the configured one
+        laptop_ip = resolve_host(laptop_url)
+        if laptop_ip not in discovered_ips:
             try:
                 laptop = OllamaProvider(base_url=laptop_url)
                 if laptop.health_check():
                     laptop.id = "ollama_laptop"
-                    laptop.name = "Ollama (M4 Pro Laptop - eugenes-mbp.local)"
+                    laptop.name = "Ollama (M4 Pro - eugenes-mbp.local)"
                     self.providers["ollama_laptop"] = laptop
+                    discovered_ips.add(laptop_ip)
             except Exception:
                 pass
 
         # Check M1 Mac Mini (m1-mini)
         m1_mini_url = "http://m1-mini.local:11434"
-        if m1_mini_url != ollama_url:  # Don't check if it's already the configured one
+        m1_mini_ip = resolve_host(m1_mini_url)
+        if m1_mini_ip not in discovered_ips:
             try:
                 m1_mini = OllamaProvider(base_url=m1_mini_url)
                 if m1_mini.health_check():
                     m1_mini.id = "ollama_m1_mini"
-                    m1_mini.name = "Ollama (M1 Mac Mini - m1-mini.local)"
+                    m1_mini.name = "Ollama (M1 Mini - m1-mini.local)"
                     self.providers["ollama_m1_mini"] = m1_mini
+                    discovered_ips.add(m1_mini_ip)
             except Exception:
                 pass
 

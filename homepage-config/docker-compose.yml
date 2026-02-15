@@ -9,5 +9,11 @@ services:
       - ./config:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
-    command: >
-      sh -c "sleep 10 && curl -d 'Homepage is up!' ntfy.sh/omnibus-brain-notifications-v3"
+    environment:
+      - HOMEPAGE_ALLOWED_HOSTS=nuc-1.local:3000,localhost:3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 1m30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
