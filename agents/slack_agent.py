@@ -51,14 +51,15 @@ class SlackAgent(Agent):
     def __init__(self, config: Dict):
         super().__init__("slack_agent", config)
 
-        # Slack setup - load from Vaultwarden
+        # Slack setup - load from Vaultwarden or environment variables
         try:
             self.bot_token = get_secret("SLACK_BOT_TOKEN")
             self.app_token = get_secret("SLACK_APP_TOKEN")
         except Exception as e:
             raise ValueError(
-                f"Failed to load Slack tokens from Vaultwarden: {e}\n"
-                "Ensure secrets are added to Vaultwarden and VAULTWARDEN_TOKEN is set."
+                f"Failed to load Slack tokens: {e}\n"
+                "Set SLACK_BOT_TOKEN and SLACK_APP_TOKEN as environment variables,\n"
+                "or add them to Vaultwarden."
             )
 
         if not self.bot_token or not self.app_token:
@@ -643,52 +644,38 @@ You're not just answering questions—you're helping build and navigate a system
             bot_name = auth_test.get("user", "Unknown")
             self.logger.info(f"✅ Slack auth OK (bot: {bot_name})")
         except SlackApiError as e:
-            errors.append(f"Slack auth failed: {e}")
-            self.logger.error(f"❌ Slack auth failed: {e}")
+            # Log warning but don't fail - let Socket Mode handle it
+            self.logger.warning(f"⚠️ Slack auth test failed: {e} (will retry via Socket Mode)")
 
         if errors:
-            # Log all errors but only fatal if Ollama or Slack is down
-            critical_errors = [e for e in errors if "Ollama" in e or "Slack" in e]
+            # Log all errors but only fatal if Ollama is down
+            critical_errors = [e for e in errors if "Ollama" in e]
             if critical_errors:
                 raise RuntimeError(f"Health check failed: {'; '.join(critical_errors)}")
 
 
-# Test mode
+# Production mode - secrets loaded from environment variables or Vaultwarden
 if __name__ == "__main__":
-    # Load environment from secrets.env if available
-    secrets_file = Path(__file__).parent.parent / "secrets.env"
-    if secrets_file.exists():
-        print(f"Loading secrets from {secrets_file}")
-        with open(secrets_file) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    # Parse: export KEY="value" or KEY=value
-                    if line.startswith("export "):
-                        line = line[7:]
-                    key, value = line.split("=", 1)
-                    value = value.strip('"').strip("'")
-                    os.environ[key] = value
 
     # Test configuration
     config = {
         "khoj_url": os.getenv("KHOJ_URL", "http://nuc-1.local:42110"),
         "ollama_url": os.getenv("OLLAMA_URL", "http://m1-mini.local:11434"),
-        "brain_folder": os.getenv("BRAIN_FOLDER", "/tmp/test_brain"),
-        "model": "llama3.2",
+        "brain_folder": os.getenv("BRAIN_FOLDER", "/home/earchibald/brain"),
+        "model": os.getenv("SLACK_MODEL", "llama3.2"),
         "max_context_tokens": 6000,
         "enable_khoj_search": True,
         "max_search_results": 3,
         "notification": {
-            "enabled": False  # Disable for testing
+            "enabled": True
         },
     }
 
-    print("🚀 Starting Slack agent in test mode...")
+    print("🚀 Starting Slack agent...")
     print(f"   Khoj: {config['khoj_url']}")
     print(f"   Ollama: {config['ollama_url']}")
     print(f"   Brain: {config['brain_folder']}")
-    print("\nPress Ctrl+C to stop\n")
+    print(f"   Model: {config['model']}")
 
     agent = SlackAgent(config)
 

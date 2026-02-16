@@ -308,9 +308,10 @@ def get_client() -> VaultwardenClient:
 
 def get_secret(key: str, default: Optional[str] = None) -> Optional[str]:
     """
-    Convenience function to get secret from Vaultwarden.
+    Convenience function to get secret from Vaultwarden with environment fallback.
 
-    This does NOT fall back to environment variables. Secrets must be in Vaultwarden.
+    Tries Vaultwarden first, then falls back to environment variables.
+    This enables gradual migration to Vaultwarden while maintaining compatibility.
 
     Args:
         key: Secret key name
@@ -320,6 +321,27 @@ def get_secret(key: str, default: Optional[str] = None) -> Optional[str]:
         Secret value or default
 
     Raises:
-        SecretNotFoundError: If secret not found and no default provided
+        SecretNotFoundError: If secret not found in either source and no default provided
     """
-    return get_client().get_secret(key, default)
+    # Try Vaultwarden first (if configured)
+    vaultwarden_token = os.getenv('VAULTWARDEN_TOKEN')
+    if vaultwarden_token:
+        try:
+            return get_client().get_secret(key, default=None)
+        except (SecretNotFoundError, VaultwardenError):
+            # Fall through to environment variable check
+            pass
+    
+    # Fall back to environment variable
+    env_value = os.getenv(key)
+    if env_value:
+        return env_value
+    
+    # Return default or raise if no default
+    if default is not None:
+        return default
+    
+    raise SecretNotFoundError(
+        f"Secret '{key}' not found in Vaultwarden or environment variables. "
+        f"Set {key}=<value> as environment variable or add to Vaultwarden."
+    )
