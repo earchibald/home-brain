@@ -4,8 +4,27 @@ This document summarizes the current state of the Homepage implementation on `nu
 
 ## Last Updated
 
-**Date:** 2026-02-15 (evening - final update)  
-**Status:** ✅ Fully operational with VaultWarden integration ready
+**Date:** 2026-02-15 (evening - final update + VaultWarden investigation)  
+**Status:** ✅ Homepage fully operational | ⚠️  VaultWarden has issues (see below)
+
+## Critical Discovery: VaultWarden Not Active Yet!
+
+**User reported:** VaultWarden showing "[error: cannot decrypt]" for all items  
+**Investigation revealed:**
+- ✅ Services ARE working (Slack bot running fine) 
+- ❌ Services are NOT using VaultWarden yet
+- ✅ Services still use SOPS for secrets (legacy method)
+- ❌ VaultWarden has corrupted/unreadable items (encryption key mismatch)
+
+**Root cause:** Code was updated to support VaultWarden, but deployment hasn't switched over yet.
+
+**Current State:**
+- Slack bot runs `slack_bot.py` (uses SOPS via `start_slack_bot.sh`)
+- Homepage configured for VaultWarden but needs VAULTWARDEN_TOKEN
+- VaultWarden vault has decryption errors (needs cleanup)
+- No VAULTWARDEN_TOKEN in secrets.env yet
+
+**See:** [WHATS_GOING_ON_VAULTWARDEN.md](../WHATS_GOING_ON_VAULTWARDEN.md) for complete explanation
 
 ## Recent Updates (Evening Session)
 

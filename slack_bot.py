@@ -145,6 +145,8 @@ class SlackBotService:
             "enable_khoj_search": os.getenv("SLACK_ENABLE_SEARCH", "true").lower()
             == "true",
             "max_search_results": int(os.getenv("SLACK_MAX_SEARCH_RESULTS", "3")),
+            "enable_model_switching": os.getenv("ENABLE_MODEL_SWITCHING", "true").lower()
+            == "true",
             "notification": {"enabled": True, "topic": os.getenv("NTFY_TOPIC")},
         }
 
