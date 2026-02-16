@@ -27,6 +27,7 @@ from clients.semantic_search_client import SemanticSearchClient
 from clients.llm_client import OllamaClient, Message
 from clients.brain_io import BrainIO
 from clients.conversation_manager import ConversationManager
+from clients.cxdb_client import CxdbClient
 from clients.vaultwarden_client import get_secret
 
 # Import new slack_bot modules for enhanced features
@@ -80,10 +81,16 @@ class SlackAgent(Agent):
             brain_path=config.get("brain_path", "/home/earchibald/brain")
         )
 
-        # Initialize conversation manager
+        # Initialize cxdb client (optional — bot works without it)
+        self.cxdb = CxdbClient(
+            base_url=config.get("cxdb_url", "http://nuc-1.local:9010")
+        )
+
+        # Initialize conversation manager with cxdb for dual-write
         self.conversations = ConversationManager(
             brain_path=config.get("brain_path", "/home/earchibald/brain"),
             llm_client=self.llm,
+            cxdb_client=self.cxdb,
         )
 
         # Configuration
@@ -612,6 +619,15 @@ You're not just answering questions—you're helping build and navigate a system
         except Exception as e:
             errors.append(f"Ollama unavailable: {e}")
             self.logger.error(f"❌ Ollama unavailable: {e}")
+
+        # Check cxdb (non-critical)
+        try:
+            if await self.cxdb.health_check():
+                self.logger.info("✅ cxdb connection OK")
+            else:
+                self.logger.warning("⚠️ cxdb unavailable (will use JSON fallback)")
+        except Exception as e:
+            self.logger.warning(f"⚠️ cxdb unavailable: {e} (will use JSON fallback)")
 
         # Check brain folder
         brain_path = Path(self.brain.brain_path)

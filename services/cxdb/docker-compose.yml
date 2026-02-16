@@ -1,0 +1,18 @@
+services:
+  cxdb:
+    image: cxdb/cxdb:latest
+    container_name: brain_cxdb
+    restart: unless-stopped
+    ports:
+      - "9009:9009"  # Binary protocol
+      - "9010:9010"  # HTTP API
+    volumes:
+      - /home/earchibald/brain/cxdb_data:/data
+    environment:
+      - CXDB_DATA_DIR=/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9010/v1/contexts"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 30s

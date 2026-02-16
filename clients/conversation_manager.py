@@ -3,32 +3,44 @@ Conversation Manager - Persistent conversation history for Slack bot
 
 Manages per-user conversation storage, retrieval, and automatic summarization
 when conversations exceed token limits.
+
+Supports optional cxdb integration for DAG-based conversation history.
+When a CxdbClient is provided, messages are dual-written (cxdb + JSON)
+with cxdb as the preferred read source and JSON as reliable fallback.
 """
 
 import json
 import asyncio
+import logging
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 
 class ConversationManager:
     """Manages conversation history with automatic summarization"""
 
-    def __init__(self, brain_path: str, llm_client=None):
+    def __init__(self, brain_path: str, llm_client=None, cxdb_client=None):
         """
         Initialize conversation manager
 
         Args:
             brain_path: Path to brain folder root
             llm_client: Optional LLMClient for summarization
+            cxdb_client: Optional CxdbClient for DAG-based history
         """
         self.brain_folder = Path(brain_path)
         self.users_folder = self.brain_folder / "users"
         self.llm_client = llm_client
+        self.cxdb_client = cxdb_client
 
         # Ensure users folder exists
         self.users_folder.mkdir(parents=True, exist_ok=True)
+
+        # Load thread_ts -> context_id mapping (for cxdb)
+        self._context_map = self._load_context_map()
 
     def _get_conversation_path(self, user_id: str, thread_id: str) -> Path:
         """Get path to conversation file"""
@@ -39,9 +51,88 @@ class ConversationManager:
         safe_thread_id = thread_id.replace("/", "_").replace("\\", "_")
         return user_folder / f"{safe_thread_id}.json"
 
+    # ------------------------------------------------------------------
+    # cxdb context mapping helpers
+    # ------------------------------------------------------------------
+
+    def _get_context_map_path(self) -> Path:
+        """Path to the cxdb context mapping file."""
+        return self.brain_folder / "cxdb_map.json"
+
+    def _load_context_map(self) -> Dict[str, int]:
+        """Load thread_ts -> context_id mapping from disk."""
+        path = self._get_context_map_path()
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text())
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning(f"Failed to load cxdb context map: {e}")
+            return {}
+
+    def _save_context_map(self) -> None:
+        """Atomically write the context map to disk."""
+        path = self._get_context_map_path()
+        try:
+            temp_path = path.with_suffix(".tmp")
+            temp_path.write_text(json.dumps(self._context_map, indent=2))
+            temp_path.rename(path)
+        except Exception as e:
+            logger.warning(f"Failed to save cxdb context map: {e}")
+
+    async def _get_or_create_context(self, thread_id: str) -> Optional[int]:
+        """Lookup or create a cxdb context for a thread.
+
+        Returns context_id or None if cxdb is unavailable.
+        """
+        if not self.cxdb_client:
+            return None
+
+        # Check existing mapping
+        if thread_id in self._context_map:
+            return self._context_map[thread_id]
+
+        # Create new context
+        try:
+            context_id = await self.cxdb_client.create_context()
+            self._context_map[thread_id] = context_id
+            self._save_context_map()
+            return context_id
+        except Exception as e:
+            logger.warning(f"Failed to create cxdb context for {thread_id}: {e}")
+            return None
+
+    def _turns_to_messages(self, turns: List[Dict]) -> List[Dict]:
+        """Convert cxdb turns to message format, filtering non-chat turns.
+
+        Args:
+            turns: Raw turn list from cxdb.
+
+        Returns:
+            List of {role, content, timestamp} dicts.
+        """
+        messages = []
+        for turn in turns:
+            if turn.get("type_id") != "chat.message":
+                continue
+            data = turn.get("data", {})
+            msg = {
+                "role": data.get("role", "user"),
+                "content": data.get("content", ""),
+            }
+            # Preserve timestamp if available
+            if "timestamp" in turn:
+                msg["timestamp"] = turn["timestamp"]
+            elif "created_at" in turn:
+                msg["timestamp"] = turn["created_at"]
+            messages.append(msg)
+        return messages
+
     async def load_conversation(self, user_id: str, thread_id: str) -> List[Dict]:
         """
-        Load conversation history
+        Load conversation history.
+
+        Tries cxdb first (if a context mapping exists), falls back to JSON.
 
         Args:
             user_id: Slack user ID
@@ -50,6 +141,18 @@ class ConversationManager:
         Returns:
             List of messages [{"role": "user|assistant", "content": "...", "timestamp": "..."}]
         """
+        # Try cxdb first if we have a mapping
+        if self.cxdb_client and thread_id in self._context_map:
+            try:
+                context_id = self._context_map[thread_id]
+                turns = await self.cxdb_client.get_turns(context_id)
+                messages = self._turns_to_messages(turns)
+                if messages:
+                    return messages
+            except Exception as e:
+                logger.warning(f"cxdb load failed for {thread_id}, falling back to JSON: {e}")
+
+        # JSON fallback
         path = self._get_conversation_path(user_id, thread_id)
 
         if not path.exists():
@@ -60,10 +163,10 @@ class ConversationManager:
                 data = json.loads(path.read_text())
                 return data.get("messages", [])
         except json.JSONDecodeError as e:
-            print(f"Error loading conversation {path}: {e}")
+            logger.warning(f"Error loading conversation {path}: {e}")
             return []
         except Exception as e:
-            print(f"Unexpected error loading conversation {path}: {e}")
+            logger.warning(f"Unexpected error loading conversation {path}: {e}")
             return []
 
     async def save_message(
@@ -75,7 +178,10 @@ class ConversationManager:
         metadata: Optional[Dict] = None,
     ) -> None:
         """
-        Save a message to conversation history
+        Save a message to conversation history.
+
+        Dual-write: tries cxdb first (best-effort), then always saves to JSON.
+        cxdb failure never blocks the JSON write.
 
         Args:
             user_id: Slack user ID
@@ -84,6 +190,23 @@ class ConversationManager:
             content: Message content
             metadata: Optional metadata (model, tokens, latency, etc.)
         """
+        # --- cxdb write (best-effort) ---
+        cxdb_turn_id = None
+        cxdb_turn_hash = None
+        if self.cxdb_client:
+            try:
+                context_id = await self._get_or_create_context(thread_id)
+                if context_id is not None:
+                    model = metadata.get("model") if metadata else None
+                    turn = await self.cxdb_client.append_turn(
+                        context_id=context_id, role=role, content=content, model=model,
+                    )
+                    cxdb_turn_id = turn.get("turn_id")
+                    cxdb_turn_hash = turn.get("turn_hash")
+            except Exception as e:
+                logger.warning(f"cxdb write failed for {thread_id}: {e}")
+
+        # --- JSON write (always) ---
         path = self._get_conversation_path(user_id, thread_id)
 
         # Load existing conversation
@@ -114,7 +237,19 @@ class ConversationManager:
         }
 
         if metadata:
-            message["metadata"] = metadata
+            message["metadata"] = dict(metadata)
+        else:
+            message["metadata"] = {}
+
+        # Enrich JSON metadata with cxdb identifiers
+        if cxdb_turn_id is not None:
+            message["metadata"]["cxdb_turn_id"] = cxdb_turn_id
+        if cxdb_turn_hash is not None:
+            message["metadata"]["cxdb_turn_hash"] = cxdb_turn_hash
+
+        # Remove empty metadata dict to stay backward-compatible
+        if not message["metadata"]:
+            del message["metadata"]
 
         data["messages"].append(message)
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -126,7 +261,7 @@ class ConversationManager:
                 temp_path.write_text(json.dumps(data, indent=2))
                 temp_path.rename(path)
         except Exception as e:
-            print(f"Error saving conversation {path}: {e}")
+            logger.error(f"Error saving conversation {path}: {e}")
             raise
 
     def estimate_tokens(self, text: str) -> int:

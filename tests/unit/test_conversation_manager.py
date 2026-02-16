@@ -10,8 +10,10 @@ Tests verify:
 - Context preservation during summarization
 - Thread-safe concurrent writes
 - Recovery from corrupted JSON files
+- cxdb dual-write and fallback behavior
 """
 
+import json
 import pytest
 from unittest.mock import AsyncMock
 
@@ -429,3 +431,118 @@ class TestConversationManagerIntegration:
         for conv in convs:
             assert "thread_id" in conv
             assert conv["message_count"] == 2
+
+
+@pytest.mark.unit
+class TestConversationManagerCxdb:
+    """Tests for cxdb dual-write and fallback behavior in ConversationManager"""
+
+    @pytest.mark.asyncio
+    async def test_save_message_writes_to_cxdb_and_json(self, test_brain_path):
+        """Dual-write: message is sent to cxdb AND saved to JSON."""
+        mock_cxdb = AsyncMock()
+        mock_cxdb.create_context.return_value = 99
+        mock_cxdb.append_turn.return_value = {"turn_id": 1, "turn_hash": "abc"}
+
+        manager = ConversationManager(str(test_brain_path), cxdb_client=mock_cxdb)
+
+        await manager.save_message("U1", "t1", "user", "hello")
+
+        # cxdb was called
+        mock_cxdb.create_context.assert_called_once()
+        mock_cxdb.append_turn.assert_called_once_with(
+            context_id=99, role="user", content="hello", model=None,
+        )
+
+        # JSON file also written
+        messages = await ConversationManager(str(test_brain_path)).load_conversation("U1", "t1")
+        assert len(messages) == 1
+        assert messages[0]["content"] == "hello"
+
+    @pytest.mark.asyncio
+    async def test_load_conversation_prefers_cxdb(self, test_brain_path):
+        """load_conversation returns cxdb turns when available."""
+        mock_cxdb = AsyncMock()
+        mock_cxdb.create_context.return_value = 10
+        mock_cxdb.append_turn.return_value = {"turn_id": 1, "turn_hash": "h1"}
+        mock_cxdb.get_turns.return_value = [
+            {"turn_id": 1, "type_id": "chat.message", "data": {"role": "user", "content": "from cxdb"}},
+        ]
+
+        manager = ConversationManager(str(test_brain_path), cxdb_client=mock_cxdb)
+
+        # Save to establish mapping
+        await manager.save_message("U1", "t1", "user", "from json")
+
+        # Load should prefer cxdb
+        messages = await manager.load_conversation("U1", "t1")
+        assert len(messages) == 1
+        assert messages[0]["content"] == "from cxdb"
+        mock_cxdb.get_turns.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cxdb_offline_falls_back_to_json(self, test_brain_path):
+        """When cxdb fails, save still works via JSON and load falls back."""
+        mock_cxdb = AsyncMock()
+        mock_cxdb.create_context.side_effect = Exception("cxdb down")
+
+        manager = ConversationManager(str(test_brain_path), cxdb_client=mock_cxdb)
+
+        # Save should succeed (JSON fallback)
+        await manager.save_message("U1", "t1", "user", "offline msg")
+
+        # Load should fall back to JSON (no mapping exists)
+        messages = await manager.load_conversation("U1", "t1")
+        assert len(messages) == 1
+        assert messages[0]["content"] == "offline msg"
+
+    @pytest.mark.asyncio
+    async def test_context_map_persisted(self, test_brain_path):
+        """Thread-to-context mapping is written to brain/cxdb_map.json."""
+        mock_cxdb = AsyncMock()
+        mock_cxdb.create_context.return_value = 55
+        mock_cxdb.append_turn.return_value = {"turn_id": 1, "turn_hash": "x"}
+
+        manager = ConversationManager(str(test_brain_path), cxdb_client=mock_cxdb)
+        await manager.save_message("U1", "thread_abc", "user", "hi")
+
+        # Verify mapping file exists
+        map_path = test_brain_path / "cxdb_map.json"
+        assert map_path.exists()
+
+        mapping = json.loads(map_path.read_text())
+        assert mapping["thread_abc"] == 55
+
+    @pytest.mark.asyncio
+    async def test_cxdb_metadata_enriches_json(self, test_brain_path):
+        """JSON messages include cxdb_turn_id and cxdb_turn_hash in metadata."""
+        mock_cxdb = AsyncMock()
+        mock_cxdb.create_context.return_value = 7
+        mock_cxdb.append_turn.return_value = {"turn_id": 42, "turn_hash": "deadbeef"}
+
+        manager = ConversationManager(str(test_brain_path), cxdb_client=mock_cxdb)
+        await manager.save_message("U1", "t1", "assistant", "response", metadata={"model": "llama3.2"})
+
+        # Read raw JSON to check metadata
+        plain_manager = ConversationManager(str(test_brain_path))
+        messages = await plain_manager.load_conversation("U1", "t1")
+
+        assert messages[0]["metadata"]["cxdb_turn_id"] == 42
+        assert messages[0]["metadata"]["cxdb_turn_hash"] == "deadbeef"
+        assert messages[0]["metadata"]["model"] == "llama3.2"
+
+    @pytest.mark.asyncio
+    async def test_no_cxdb_client_behaves_like_before(self, test_brain_path):
+        """Without cxdb_client, behavior is identical to pre-integration."""
+        manager = ConversationManager(str(test_brain_path))
+
+        await manager.save_message("U1", "t1", "user", "hello")
+        messages = await manager.load_conversation("U1", "t1")
+
+        assert len(messages) == 1
+        assert messages[0]["content"] == "hello"
+        # No metadata key when none provided
+        assert "metadata" not in messages[0]
+
+        # No mapping file created
+        assert not (test_brain_path / "cxdb_map.json").exists()
