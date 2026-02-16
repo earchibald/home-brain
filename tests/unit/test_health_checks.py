@@ -54,15 +54,17 @@ class TestHealthChecks:
             "os.environ",
             {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
         ):
-            # Patch the clients to use mocks
+            # Patch the clients to use mocks  
             with (
-                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
-                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
-                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("agent_platform.OllamaClient") as mock_llm_class,
+                patch("agent_platform.SemanticSearchClient") as mock_search_class,
+                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
+                patch("agent_platform.BrainIO"),
+                patch("slack_bolt.app.client.WebClient"),
             ):
                 # Setup mocks
                 mock_llm_class.return_value = mock_llm
-                mock_khoj_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
 
                 # Create agent
@@ -107,12 +109,15 @@ class TestHealthChecks:
             {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
         ):
             with (
-                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
-                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
-                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("clients.llm_client.OllamaClient") as mock_llm_class,
+                patch("clients.semantic_search_client.SemanticSearchClient") as mock_search_class,
+                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
+                patch("clients.brain_io.BrainIO"),
+                patch("clients.conversation_manager.ConversationManager"),
+                patch("clients.cxdb_client.CxdbClient"),
             ):
                 mock_llm_class.return_value = mock_llm
-                mock_khoj_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
 
                 agent = SlackAgent(config)
@@ -157,12 +162,15 @@ class TestHealthChecks:
             {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
         ):
             with (
-                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
-                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
-                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("clients.llm_client.OllamaClient") as mock_llm_class,
+                patch("clients.semantic_search_client.SemanticSearchClient") as mock_search_class,
+                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
+                patch("clients.brain_io.BrainIO"),
+                patch("clients.conversation_manager.ConversationManager"),
+                patch("clients.cxdb_client.CxdbClient"),
             ):
                 mock_llm_class.return_value = mock_llm
-                mock_khoj_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
 
                 agent = SlackAgent(config)
@@ -208,13 +216,18 @@ class TestHealthChecks:
             {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
         ):
             with (
-                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
-                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
-                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("clients.llm_client.OllamaClient") as mock_llm_class,
+                patch("clients.semantic_search_client.SemanticSearchClient") as mock_search_class,
+                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
+                patch("clients.brain_io.BrainIO") as mock_brain_class,
+                patch("clients.conversation_manager.ConversationManager"),
+                patch("clients.cxdb_client.CxdbClient"),
             ):
                 mock_llm_class.return_value = mock_llm
-                mock_khoj_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
+                # Make BrainIO raise ValueError for missing path
+                mock_brain_class.side_effect = ValueError("Brain folder not found")
 
                 # Agent initialization should raise ValueError for missing brain path
                 with pytest.raises(ValueError, match="Brain"):
@@ -259,12 +272,15 @@ class TestHealthChecks:
             {"SLACK_BOT_TOKEN": "xoxb-invalid", "SLACK_APP_TOKEN": "xapp-invalid"},
         ):
             with (
-                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
-                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
-                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("clients.llm_client.OllamaClient") as mock_llm_class,
+                patch("clients.semantic_search_client.SemanticSearchClient") as mock_search_class,
+                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
+                patch("clients.brain_io.BrainIO"),
+                patch("clients.conversation_manager.ConversationManager"),
+                patch("clients.cxdb_client.CxdbClient"),
             ):
                 mock_llm_class.return_value = mock_llm
-                mock_khoj_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
 
                 agent = SlackAgent(config)
@@ -309,12 +325,15 @@ class TestHealthCheckEdgeCases:
             {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
         ):
             with (
-                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
-                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
-                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("clients.llm_client.OllamaClient") as mock_llm_class,
+                patch("clients.semantic_search_client.SemanticSearchClient") as mock_search_class,
+                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
+                patch("clients.brain_io.BrainIO"),
+                patch("clients.conversation_manager.ConversationManager"),
+                patch("clients.cxdb_client.CxdbClient"),
             ):
                 mock_llm_class.return_value = mock_llm
-                mock_khoj_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
 
                 agent = SlackAgent(config)
@@ -348,12 +367,15 @@ class TestHealthCheckEdgeCases:
             {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
         ):
             with (
-                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
-                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
-                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("clients.llm_client.OllamaClient") as mock_llm_class,
+                patch("clients.semantic_search_client.SemanticSearchClient") as mock_search_class,
+                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
+                patch("clients.brain_io.BrainIO"),
+                patch("clients.conversation_manager.ConversationManager"),
+                patch("clients.cxdb_client.CxdbClient"),
             ):
                 mock_llm_class.return_value = mock_llm
-                mock_khoj_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
 
                 agent = SlackAgent(config)
@@ -396,12 +418,15 @@ class TestHealthCheckRecovery:
             {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
         ):
             with (
-                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
-                patch("agents.slack_agent.KhojClient") as mock_khoj_class,
-                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("clients.llm_client.OllamaClient") as mock_llm_class,
+                patch("clients.semantic_search_client.SemanticSearchClient") as mock_search_class,
+                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
+                patch("clients.brain_io.BrainIO"),
+                patch("clients.conversation_manager.ConversationManager"),
+                patch("clients.cxdb_client.CxdbClient"),
             ):
                 mock_llm_class.return_value = mock_llm
-                mock_khoj_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_khoj
                 mock_app_class.return_value = mock_slack_app
 
                 agent = SlackAgent(config)
