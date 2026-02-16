@@ -28,9 +28,12 @@ def build_model_selector_ui(manager: ModelManager) -> List[Dict]:
             f"(`{config['model_name']}`)"
         )
     else:
+        # Get default provider name
+        default_provider = manager.providers.get('ollama_configured')
+        provider_name = default_provider.name if default_provider else 'Ollama'
         status_text = (
-            "*Current Selection:* ⚪ No model selected\n"
-            f"_Using default: {manager.providers.get('ollama_configured', {}).get('name', 'Ollama')} - llama3.2:latest_"
+            f"*Current Selection:* ⚪ No model selected\n"
+            f"_Using default: {provider_name} - llama3.2:latest_"
         )
 
     blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": status_text}})
