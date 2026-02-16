@@ -1,6 +1,7 @@
 """FastAPI service for semantic search API."""
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Path as PathParam
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from typing import List, Dict, Optional, Any
 import logging
 import asyncio
@@ -10,6 +11,7 @@ import aiohttp
 from .embedder import OllamaEmbedder
 from .vector_store import VectorStore
 from .indexer import BrainIndexer
+from .index_control import IndexControl, GATE_READONLY, GATE_READWRITE, VALID_GATES
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,7 @@ app = FastAPI(title="Brain Semantic Search", version="1.0.0")
 embedder: Optional[OllamaEmbedder] = None
 vector_store: Optional[VectorStore] = None
 indexer: Optional[BrainIndexer] = None
+index_control: Optional[IndexControl] = None
 
 # Configuration (read from environment variables with defaults)
 CONFIG = {
@@ -70,7 +73,7 @@ def configure(config: Dict[str, Any]):
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup."""
-    global embedder, vector_store, indexer
+    global embedder, vector_store, indexer, index_control
     
     logger.info("Starting semantic search service")
     
@@ -89,13 +92,17 @@ async def startup_event():
     # Initialize vector store
     vector_store = VectorStore(persist_directory=CONFIG["chroma_persist_dir"])
     logger.info(f"Vector store initialized with {vector_store.get_document_count()} documents")
+
+    # Initialize index control (state lives alongside chroma data)
+    index_control = IndexControl(data_dir=CONFIG["chroma_persist_dir"])
     
-    # Initialize indexer
+    # Initialize indexer with index_control
     indexer = BrainIndexer(
         brain_path=CONFIG["brain_path"],
         embedder=embedder,
         vector_store=vector_store,
-        watch_files=CONFIG["watch_files"]
+        watch_files=CONFIG["watch_files"],
+        index_control=index_control,
     )
     
     # Start file watching
@@ -228,6 +235,243 @@ async def stats():
         "embedding_model": CONFIG["embedding_model"],
         "file_watching": CONFIG["watch_files"]
     }
+
+
+# ======================================================================
+# Document Management Endpoints
+# ======================================================================
+
+
+class GateRequest(BaseModel):
+    """Request body for setting a directory gate."""
+    directory: str = Field(..., description="Directory path relative to brain root")
+    mode: str = Field(..., description="Gate mode: 'readonly' or 'readwrite'")
+
+
+class GatesUpdateRequest(BaseModel):
+    """Request body for bulk gate update."""
+    gates: Dict[str, str] = Field(..., description="Mapping of directory → mode")
+
+
+@app.get("/api/documents")
+async def list_documents(
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    limit: int = Query(50, ge=1, le=200, description="Page size"),
+    folder: Optional[str] = Query(None, description="Filter by folder prefix"),
+):
+    """List indexed documents (paged).
+
+    Returns a page of files from the in-memory registry along with total count.
+    """
+    if not index_control:
+        raise HTTPException(status_code=503, detail="Index control not initialized")
+
+    items, total = index_control.get_registered_files(
+        offset=offset, limit=limit, folder_filter=folder
+    )
+    return {"items": items, "total": total, "offset": offset, "limit": limit}
+
+
+@app.get("/api/documents/{file_path:path}")
+async def get_document_info(file_path: str):
+    """Get index info for a single document."""
+    if not index_control:
+        raise HTTPException(status_code=503, detail="Index control not initialized")
+
+    info = index_control.get_file_info(file_path)
+    if info is None:
+        raise HTTPException(status_code=404, detail=f"File not in index: {file_path}")
+    return info
+
+
+@app.post("/api/documents/{file_path:path}/ignore")
+async def ignore_document(file_path: str):
+    """Remove a document from the index and add it to the ignore list.
+
+    The document will be re-indexed automatically when its content or
+    modification time changes on disk.
+    """
+    if not index_control or not vector_store:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    # Verify the file exists in the registry
+    info = index_control.get_file_info(file_path)
+    if info is None:
+        raise HTTPException(status_code=404, detail=f"File not in index: {file_path}")
+
+    # Get current disk signature for the ignore entry
+    from pathlib import Path as _Path
+    abs_path = _Path(CONFIG["brain_path"]) / file_path
+    if abs_path.exists():
+        stat = abs_path.stat()
+        mtime, size = stat.st_mtime, stat.st_size
+    else:
+        # File already gone from disk — still remove from index
+        mtime, size = 0.0, 0
+
+    # Remove vectors from ChromaDB
+    vector_store.delete_by_file_path(file_path)
+
+    # Add to ignore list
+    index_control.ignore_file(file_path, mtime=mtime, size=size)
+
+    # Remove from registry
+    index_control.unregister_file(file_path)
+    index_control.persist_registry()
+
+    return {"status": "ignored", "file": file_path}
+
+
+@app.post("/api/documents/{file_path:path}/delete")
+async def delete_document(file_path: str):
+    """Delete a document: remove from index AND delete the source file.
+
+    Respects directory gates. If the file is in a *readonly* directory, the
+    request is rejected — use the /ignore endpoint instead.
+    """
+    if not index_control or not vector_store:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    # Gate check
+    if not index_control.can_delete_file(file_path):
+        raise HTTPException(
+            status_code=403,
+            detail=f"File is in a read-only directory. Use /ignore instead.",
+        )
+
+    # Remove vectors
+    vector_store.delete_by_file_path(file_path)
+
+    # Remove from registry
+    index_control.unregister_file(file_path)
+    index_control.persist_registry()
+
+    # Delete source file from disk
+    from pathlib import Path as _Path
+    abs_path = _Path(CONFIG["brain_path"]) / file_path
+    deleted_from_disk = False
+    if abs_path.exists():
+        try:
+            abs_path.unlink()
+            deleted_from_disk = True
+            logger.info(f"Deleted source file: {abs_path}")
+        except Exception as e:
+            logger.error(f"Failed to delete source file {abs_path}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to delete file: {e}")
+
+    return {
+        "status": "deleted",
+        "file": file_path,
+        "deleted_from_disk": deleted_from_disk,
+    }
+
+
+# ======================================================================
+# Gate Configuration Endpoints
+# ======================================================================
+
+
+@app.get("/api/config/gates")
+async def get_gates():
+    """Return current directory gate configuration."""
+    if not index_control:
+        raise HTTPException(status_code=503, detail="Index control not initialized")
+    return {"gates": index_control.get_gates()}
+
+
+@app.post("/api/config/gates")
+async def set_gate(req: GateRequest):
+    """Set or update a single directory gate."""
+    if not index_control:
+        raise HTTPException(status_code=503, detail="Index control not initialized")
+
+    if req.mode not in VALID_GATES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid mode '{req.mode}'. Must be one of: {', '.join(VALID_GATES)}",
+        )
+
+    try:
+        index_control.set_gate(req.directory, req.mode)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"status": "ok", "directory": req.directory, "mode": req.mode}
+
+
+@app.put("/api/config/gates")
+async def replace_gates(req: GatesUpdateRequest):
+    """Replace all gates with the provided mapping."""
+    if not index_control:
+        raise HTTPException(status_code=503, detail="Index control not initialized")
+
+    # Validate all modes first
+    for directory, mode in req.gates.items():
+        if mode not in VALID_GATES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid mode '{mode}' for '{directory}'.",
+            )
+
+    # Clear existing and set new
+    for existing_dir in list(index_control.get_gates().keys()):
+        index_control.remove_gate(existing_dir)
+    for directory, mode in req.gates.items():
+        try:
+            index_control.set_gate(directory, mode)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    return {"status": "ok", "gates": index_control.get_gates()}
+
+
+@app.delete("/api/config/gates/{directory:path}")
+async def remove_gate(directory: str):
+    """Remove a gate for a directory."""
+    if not index_control:
+        raise HTTPException(status_code=503, detail="Index control not initialized")
+
+    index_control.remove_gate(directory)
+    return {"status": "ok", "directory": directory}
+
+
+# ======================================================================
+# Ignore List Endpoints
+# ======================================================================
+
+
+@app.get("/api/ignored")
+async def list_ignored():
+    """Return the current ignore list."""
+    if not index_control:
+        raise HTTPException(status_code=503, detail="Index control not initialized")
+    return {"ignored": index_control.get_ignored_files()}
+
+
+@app.delete("/api/ignored/{file_path:path}")
+async def unignore(file_path: str):
+    """Remove a file from the ignore list (manual re-enable).
+
+    The file will be picked up on the next indexing pass.
+    """
+    if not index_control:
+        raise HTTPException(status_code=503, detail="Index control not initialized")
+
+    index_control.unignore_file(file_path)
+    return {"status": "unignored", "file": file_path}
+
+
+# ======================================================================
+# Extended Stats
+# ======================================================================
+
+
+@app.get("/api/registry/stats")
+async def registry_stats():
+    """Detailed index statistics including gates and ignore counts."""
+    if not index_control:
+        raise HTTPException(status_code=503, detail="Index control not initialized")
+    return index_control.get_registry_stats()
 
 
 if __name__ == "__main__":

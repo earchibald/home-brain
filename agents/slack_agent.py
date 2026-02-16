@@ -35,6 +35,25 @@ from slack_bot.message_processor import detect_file_attachments
 from slack_bot.file_handler import download_file_from_slack, extract_text_content
 from slack_bot.performance_monitor import PerformanceMonitor
 from slack_bot.model_selector import build_model_selector_ui, apply_model_selection
+from slack_bot.index_manager import (
+    build_index_dashboard,
+    build_document_browser,
+    build_delete_confirmation,
+    build_gate_setup,
+    parse_gate_config_text,
+    PAGE_SIZE,
+    ACTION_BROWSE,
+    ACTION_PAGE_NEXT,
+    ACTION_PAGE_PREV,
+    ACTION_DOC_IGNORE,
+    ACTION_DOC_DELETE,
+    ACTION_FILTER_FOLDER,
+    ACTION_SHOW_SETUP,
+    ACTION_SETUP_SUBMIT,
+    ACTION_REINDEX,
+    ACTION_CONFIRM_DELETE,
+    ACTION_CANCEL_DELETE,
+)
 from slack_bot.exceptions import (
     FileDownloadError,
     UnsupportedFileTypeError,
@@ -398,6 +417,176 @@ You're not just answering questions—you're helping build and navigate a system
                     response_type="ephemeral",
                     replace_original=False,
                 )
+
+        # ==================================================================
+        # /index command and action handlers
+        # ==================================================================
+
+        @self.app.command("/index")
+        async def handle_index_command(ack, respond, command):
+            """Handle /index command — show the index manager dashboard."""
+            await ack()
+            try:
+                stats = await self.khoj.get_registry_stats()
+                if not stats:
+                    stats = {"total_files": 0, "total_chunks": 0, "gates": {}, "ignored_count": 0}
+                blocks = build_index_dashboard(stats)
+                await respond(text="Index Manager", blocks=blocks, response_type="ephemeral")
+                self.logger.info(f"User {command['user_id']} opened /index dashboard")
+            except Exception as e:
+                self.logger.error(f"Error handling /index command: {e}", exc_info=True)
+                await respond(text=f"⚠️ Error loading index manager: {e}", response_type="ephemeral")
+
+        @self.app.action(ACTION_BROWSE)
+        async def handle_browse(ack, action, respond):
+            """Handle Browse Documents button — show paged document list."""
+            await ack()
+            try:
+                offset = int(action.get("value", "0"))
+                page = await self.khoj.list_documents(offset=offset, limit=PAGE_SIZE)
+                blocks = build_document_browser(
+                    items=[{
+                        "path": d.path, "chunks": d.chunks,
+                        "size": d.size, "gate": d.gate, "indexed_at": d.indexed_at,
+                    } for d in page.items],
+                    total=page.total, offset=page.offset, limit=PAGE_SIZE,
+                )
+                await respond(text="Documents", blocks=blocks, response_type="ephemeral", replace_original=True)
+            except Exception as e:
+                self.logger.error(f"Error browsing documents: {e}", exc_info=True)
+                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=False)
+
+        @self.app.action(ACTION_PAGE_NEXT)
+        @self.app.action(ACTION_PAGE_PREV)
+        async def handle_page_nav(ack, action, respond):
+            """Handle pagination buttons."""
+            await ack()
+            try:
+                parts = action.get("value", "0|").split("|", 1)
+                offset = int(parts[0])
+                folder_filter = parts[1] if len(parts) > 1 and parts[1] else None
+                page = await self.khoj.list_documents(offset=offset, limit=PAGE_SIZE, folder=folder_filter)
+                blocks = build_document_browser(
+                    items=[{
+                        "path": d.path, "chunks": d.chunks,
+                        "size": d.size, "gate": d.gate, "indexed_at": d.indexed_at,
+                    } for d in page.items],
+                    total=page.total, offset=page.offset, limit=PAGE_SIZE,
+                    folder_filter=folder_filter,
+                )
+                await respond(text="Documents", blocks=blocks, response_type="ephemeral", replace_original=True)
+            except Exception as e:
+                self.logger.error(f"Error in page navigation: {e}", exc_info=True)
+                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=False)
+
+        @self.app.action(ACTION_DOC_IGNORE)
+        async def handle_doc_ignore(ack, action, respond):
+            """Handle Ignore button — remove from index, add to ignore list."""
+            await ack()
+            file_path = action.get("value", "")
+            try:
+                success = await self.khoj.ignore_document(file_path)
+                if success:
+                    await respond(
+                        text=f"👁️ `{file_path}` removed from index and added to ignore list.\nIt will be re-indexed if its content changes.",
+                        response_type="ephemeral", replace_original=False,
+                    )
+                else:
+                    await respond(text=f"⚠️ Failed to ignore `{file_path}`.", response_type="ephemeral", replace_original=False)
+            except Exception as e:
+                self.logger.error(f"Error ignoring document: {e}", exc_info=True)
+                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=False)
+
+        @self.app.action(ACTION_DOC_DELETE)
+        async def handle_doc_delete_prompt(ack, action, respond):
+            """Handle Delete button — show confirmation dialog."""
+            await ack()
+            file_path = action.get("value", "")
+            try:
+                info = await self.khoj.get_document_info(file_path)
+                gate = info.gate if info else "ungated"
+                blocks = build_delete_confirmation(file_path, gate)
+                await respond(text="Confirm Delete", blocks=blocks, response_type="ephemeral", replace_original=False)
+            except Exception as e:
+                self.logger.error(f"Error building delete confirmation: {e}", exc_info=True)
+                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=False)
+
+        @self.app.action(ACTION_CONFIRM_DELETE)
+        async def handle_confirm_delete(ack, action, respond):
+            """Handle confirmed deletion — delete file from disk + index."""
+            await ack()
+            file_path = action.get("value", "")
+            try:
+                success = await self.khoj.delete_document(file_path)
+                if success:
+                    await respond(
+                        text=f"🗑️ `{file_path}` has been deleted from disk and removed from the index.",
+                        response_type="ephemeral", replace_original=True,
+                    )
+                else:
+                    await respond(
+                        text=f"⚠️ Failed to delete `{file_path}`. It may be in a read-only directory.",
+                        response_type="ephemeral", replace_original=True,
+                    )
+            except Exception as e:
+                self.logger.error(f"Error deleting document: {e}", exc_info=True)
+                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=True)
+
+        @self.app.action(ACTION_CANCEL_DELETE)
+        async def handle_cancel_delete(ack, action, respond):
+            """Handle cancel deletion."""
+            await ack()
+            await respond(text="Deletion cancelled.", response_type="ephemeral", replace_original=True)
+
+        @self.app.action(ACTION_SHOW_SETUP)
+        async def handle_show_setup(ack, action, respond):
+            """Show the gate configuration UI."""
+            await ack()
+            try:
+                gates = await self.khoj.get_gates()
+                blocks = build_gate_setup(gates)
+                await respond(text="Gate Setup", blocks=blocks, response_type="ephemeral", replace_original=True)
+            except Exception as e:
+                self.logger.error(f"Error showing gate setup: {e}", exc_info=True)
+                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=False)
+
+        @self.app.action(ACTION_SETUP_SUBMIT)
+        async def handle_setup_submit(ack, body, respond):
+            """Handle gate config save from text area."""
+            await ack()
+            try:
+                # Extract text input from Block Kit state
+                state = body.get("state", {}).get("values", {})
+                gate_block = state.get("gate_config_block", {})
+                gate_input = gate_block.get("gate_config_input", {})
+                text = gate_input.get("value", "")
+
+                gates = parse_gate_config_text(text)
+                success = await self.khoj.replace_gates(gates)
+                if success:
+                    gate_summary = "\n".join(f"  {'🔒' if m == 'readonly' else '📝'} `{d}` → {m}" for d, m in sorted(gates.items()))
+                    await respond(
+                        text=f"✅ Gates saved:\n{gate_summary}",
+                        response_type="ephemeral", replace_original=True,
+                    )
+                else:
+                    await respond(text="⚠️ Failed to save gate configuration.", response_type="ephemeral", replace_original=True)
+            except ValueError as e:
+                await respond(text=f"⚠️ Invalid gate config: {e}", response_type="ephemeral", replace_original=False)
+            except Exception as e:
+                self.logger.error(f"Error saving gate config: {e}", exc_info=True)
+                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=False)
+
+        @self.app.action(ACTION_REINDEX)
+        async def handle_reindex(ack, action, respond):
+            """Handle Reindex All button."""
+            await ack()
+            try:
+                await self.khoj.trigger_reindex(force=True)
+                await respond(text="🔄 Full re-index started. This may take a few minutes.", response_type="ephemeral", replace_original=False)
+            except Exception as e:
+                self.logger.error(f"Error triggering reindex: {e}", exc_info=True)
+                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=False)
 
     async def _process_file_attachment(
         self, attachment: Dict, channel_id: str, user_id: str

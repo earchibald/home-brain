@@ -6,8 +6,8 @@ Drop-in replacement for KhojClient with API compatibility.
 
 import httpx
 import logging
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
+from typing import List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,27 @@ class SearchResult:
     file: str
     heading: str = ""  # Not used but kept for API compatibility
     corpus_id: str = ""  # Not used but kept for API compatibility
+
+
+@dataclass
+class DocumentInfo:
+    """Represents a single indexed document from the registry."""
+
+    path: str
+    chunks: int = 0
+    indexed_at: str = ""
+    size: int = 0
+    gate: str = "ungated"
+
+
+@dataclass
+class DocumentListPage:
+    """A page of documents from the listing endpoint."""
+
+    items: List[DocumentInfo] = field(default_factory=list)
+    total: int = 0
+    offset: int = 0
+    limit: int = 50
 
 
 class SemanticSearchClient:
@@ -186,6 +207,217 @@ class SemanticSearchClient:
 
         except Exception as e:
             logger.error(f"Failed to trigger reindex: {e}")
+
+    # ------------------------------------------------------------------
+    # Document management (index control)
+    # ------------------------------------------------------------------
+
+    async def list_documents(
+        self, offset: int = 0, limit: int = 50, folder: Optional[str] = None
+    ) -> DocumentListPage:
+        """List indexed documents from the registry.
+
+        Args:
+            offset: Pagination offset
+            limit: Page size
+            folder: Optional folder prefix to filter by
+
+        Returns:
+            DocumentListPage with items and pagination info
+        """
+        await self._ensure_client()
+
+        try:
+            url = f"{self.base_url}/api/documents"
+            params: Dict[str, Any] = {"offset": offset, "limit": limit}
+            if folder:
+                params["folder"] = folder
+            response = await self.client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            items = [
+                DocumentInfo(
+                    path=item.get("path", ""),
+                    chunks=item.get("chunks", 0),
+                    indexed_at=item.get("indexed_at", ""),
+                    size=item.get("size", 0),
+                    gate=item.get("gate", "ungated"),
+                )
+                for item in data.get("items", [])
+            ]
+            return DocumentListPage(
+                items=items,
+                total=data.get("total", 0),
+                offset=data.get("offset", offset),
+                limit=data.get("limit", limit),
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to list documents: {e}")
+            return DocumentListPage()
+
+    async def get_document_info(self, file_path: str) -> Optional[DocumentInfo]:
+        """Get index info for a single document.
+
+        Args:
+            file_path: Relative path to the document
+
+        Returns:
+            DocumentInfo or None if not found
+        """
+        await self._ensure_client()
+
+        try:
+            url = f"{self.base_url}/api/documents/{file_path}"
+            response = await self.client.get(url)
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            data = response.json()
+            return DocumentInfo(
+                path=data.get("path", file_path),
+                chunks=data.get("chunks", 0),
+                indexed_at=data.get("indexed_at", ""),
+                size=data.get("size", 0),
+                gate=data.get("gate", "ungated"),
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to get document info for {file_path}: {e}")
+            return None
+
+    async def ignore_document(self, file_path: str) -> bool:
+        """Remove a document from the index and add it to the ignore list.
+
+        Args:
+            file_path: Relative path to the document
+
+        Returns:
+            True if successful
+        """
+        await self._ensure_client()
+
+        try:
+            url = f"{self.base_url}/api/documents/{file_path}/ignore"
+            response = await self.client.post(url)
+            response.raise_for_status()
+            logger.info(f"Ignored document: {file_path}")
+            return True
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Failed to ignore document {file_path}: {e.response.status_code} {e.response.text}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to ignore document {file_path}: {e}")
+            return False
+
+    async def delete_document(self, file_path: str) -> bool:
+        """Delete a document from the index AND from disk.
+
+        Will fail if the file is in a read-only gated directory.
+
+        Args:
+            file_path: Relative path to the document
+
+        Returns:
+            True if successful
+        """
+        await self._ensure_client()
+
+        try:
+            url = f"{self.base_url}/api/documents/{file_path}/delete"
+            response = await self.client.post(url)
+            response.raise_for_status()
+            logger.info(f"Deleted document: {file_path}")
+            return True
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Failed to delete document {file_path}: {e.response.status_code} {e.response.text}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to delete document {file_path}: {e}")
+            return False
+
+    async def get_gates(self) -> Dict[str, str]:
+        """Get current directory gate configuration.
+
+        Returns:
+            Dict mapping directory prefix to gate mode ('readonly'/'readwrite')
+        """
+        await self._ensure_client()
+
+        try:
+            url = f"{self.base_url}/api/config/gates"
+            response = await self.client.get(url)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("gates", {})
+
+        except Exception as e:
+            logger.error(f"Failed to get gates: {e}")
+            return {}
+
+    async def set_gate(self, directory: str, mode: str) -> bool:
+        """Set a single directory gate.
+
+        Args:
+            directory: Directory prefix relative to brain root
+            mode: 'readonly' or 'readwrite'
+
+        Returns:
+            True if successful
+        """
+        await self._ensure_client()
+
+        try:
+            url = f"{self.base_url}/api/config/gates"
+            response = await self.client.post(url, json={"directory": directory, "mode": mode})
+            response.raise_for_status()
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to set gate {directory}={mode}: {e}")
+            return False
+
+    async def replace_gates(self, gates: Dict[str, str]) -> bool:
+        """Replace all gates with a new mapping.
+
+        Args:
+            gates: Full mapping of directory → mode
+
+        Returns:
+            True if successful
+        """
+        await self._ensure_client()
+
+        try:
+            url = f"{self.base_url}/api/config/gates"
+            response = await self.client.put(url, json={"gates": gates})
+            response.raise_for_status()
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to replace gates: {e}")
+            return False
+
+    async def get_registry_stats(self) -> Dict[str, Any]:
+        """Get detailed index statistics including gates and ignore counts.
+
+        Returns:
+            Dict with total_files, total_chunks, gates, ignored_count
+        """
+        await self._ensure_client()
+
+        try:
+            url = f"{self.base_url}/api/registry/stats"
+            response = await self.client.get(url)
+            response.raise_for_status()
+            return response.json()
+
+        except Exception as e:
+            logger.error(f"Failed to get registry stats: {e}")
+            return {}
 
     async def close(self):
         """Close the HTTP client."""

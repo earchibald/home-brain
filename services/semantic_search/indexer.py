@@ -2,7 +2,7 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import List, Optional, Set, TYPE_CHECKING
 import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileSystemEvent
@@ -10,6 +10,9 @@ import fnmatch
 
 from .embedder import OllamaEmbedder
 from .vector_store import VectorStore
+
+if TYPE_CHECKING:
+    from .index_control import IndexControl
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +154,8 @@ class BrainIndexer:
         brain_path: str,
         embedder: OllamaEmbedder,
         vector_store: VectorStore,
-        watch_files: bool = True
+        watch_files: bool = True,
+        index_control: Optional['IndexControl'] = None,
     ):
         """Initialize the indexer.
         
@@ -160,17 +164,21 @@ class BrainIndexer:
             embedder: Embedder for generating embeddings
             vector_store: Vector store for storing embeddings
             watch_files: Enable real-time file watching
+            index_control: Optional IndexControl for gating/ignore support
         """
         self.brain_path = Path(brain_path)
         self.embedder = embedder
         self.vector_store = vector_store
         self.watch_files = watch_files
+        self.index_control = index_control
         
         self.observer: Optional[Observer] = None
         self.event_handler: Optional[BrainIndexerEventHandler] = None
         
     async def index_file(self, file_path: Path) -> bool:
         """Index a single file.
+        
+        Respects ignore list and gating from IndexControl when available.
         
         Args:
             file_path: Path to the file
@@ -180,7 +188,21 @@ class BrainIndexer:
         """
         if not DocumentProcessor.should_index(file_path):
             return False
-            
+
+        relative_path = str(file_path.relative_to(self.brain_path))
+
+        # --- IndexControl integration ---
+        if self.index_control is not None:
+            try:
+                sig = (file_path.stat().st_mtime, file_path.stat().st_size)
+            except FileNotFoundError:
+                logger.warning(f"File vanished before indexing: {file_path}")
+                return False
+
+            if self.index_control.is_ignored(relative_path, current_signature=sig):
+                logger.debug(f"Skipping ignored file: {relative_path}")
+                return False
+
         logger.info(f"Indexing {file_path}")
         
         # Read file content
@@ -190,7 +212,6 @@ class BrainIndexer:
             return False
             
         # Remove old entries for this file
-        relative_path = str(file_path.relative_to(self.brain_path))
         self.vector_store.delete_by_file_path(relative_path)
         
         # Chunk the content
@@ -213,6 +234,14 @@ class BrainIndexer:
             file_paths=file_paths,
             chunk_indices=chunk_indices
         )
+
+        # Update registry
+        if self.index_control is not None:
+            try:
+                size = file_path.stat().st_size
+            except FileNotFoundError:
+                size = 0
+            self.index_control.register_file(relative_path, len(chunks), size)
         
         return True
         
@@ -225,6 +254,8 @@ class BrainIndexer:
         try:
             relative_path = str(file_path.relative_to(self.brain_path))
             self.vector_store.delete_by_file_path(relative_path)
+            if self.index_control is not None:
+                self.index_control.unregister_file(relative_path)
             logger.info(f"Removed {file_path} from index")
         except Exception as e:
             logger.error(f"Failed to remove {file_path}: {e}")
@@ -255,6 +286,10 @@ class BrainIndexer:
         
         doc_count = self.vector_store.get_document_count()
         logger.info(f"Total documents in vector store: {doc_count}")
+
+        # Flush file registry to disk after bulk indexing
+        if self.index_control is not None:
+            self.index_control.persist_registry()
         
     def start_watching(self):
         """Start watching for file changes."""
