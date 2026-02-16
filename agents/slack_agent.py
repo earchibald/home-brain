@@ -79,6 +79,74 @@ from slack_bot.file_uploader import (
 
 # Import model switching components
 from services.model_manager import ModelManager
+from providers.gemini_adapter import GeminiProvider, QuotaExhaustedError
+
+
+# ==================================================================
+# API Key Storage (secure local file)
+# ==================================================================
+
+class ApiKeyStore:
+    """
+    Secure storage for user API keys.
+    
+    Stores keys in a JSON file with restricted permissions.
+    Keys are stored per-user (Slack user ID).
+    """
+    
+    def __init__(self, storage_path: str = None):
+        self.storage_path = storage_path or os.path.expanduser("~/.brain-api-keys.json")
+        self._ensure_file()
+    
+    def _ensure_file(self):
+        """Create storage file with secure permissions if it doesn't exist."""
+        import json
+        if not os.path.exists(self.storage_path):
+            with open(self.storage_path, 'w') as f:
+                json.dump({}, f)
+            os.chmod(self.storage_path, 0o600)
+    
+    def _load(self) -> dict:
+        import json
+        try:
+            with open(self.storage_path, 'r') as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    
+    def _save(self, data: dict):
+        import json
+        with open(self.storage_path, 'w') as f:
+            json.dump(data, f, indent=2)
+        os.chmod(self.storage_path, 0o600)
+    
+    def set_key(self, user_id: str, provider: str, api_key: str):
+        """Store an API key for a user."""
+        data = self._load()
+        if user_id not in data:
+            data[user_id] = {}
+        data[user_id][provider] = api_key
+        self._save(data)
+    
+    def get_key(self, user_id: str, provider: str) -> str:
+        """Get an API key for a user. Returns None if not set."""
+        data = self._load()
+        return data.get(user_id, {}).get(provider)
+    
+    def delete_key(self, user_id: str, provider: str):
+        """Delete an API key for a user."""
+        data = self._load()
+        if user_id in data and provider in data[user_id]:
+            del data[user_id][provider]
+            self._save(data)
+    
+    def mask_key(self, api_key: str) -> str:
+        """Return masked version of key for display."""
+        if not api_key:
+            return "(not set)"
+        if len(api_key) <= 8:
+            return "****"
+        return f"{api_key[:4]}...{api_key[-4:]}"
 
 
 class SlackAgent(Agent):
@@ -155,38 +223,37 @@ class SlackAgent(Agent):
         
         self.system_prompt = config.get(
             "system_prompt",
-            """You are Brain Assistant, Eugene's personal AI companion. You have two sources of knowledge:
+            """You are Brain Assistant, Eugene's personal AI companion. Your default name is "Brain Assistant" but Eugene may give you a nickname — when he does, adopt it as YOUR name (e.g., "I'd like to call you Archie" means YOU are now Archie, not the user).
 
-1. **Conversation Memory** — You remember what Eugene has told you in this conversation. This is your PRIMARY context. Always prioritize what was said earlier in our chat.
+## Your Two Knowledge Sources
 
-2. **Brain (Knowledge Base)** — A searchable archive of Eugene's notes, journals, and documents. When you have brain search results, use them to enrich your answers — but never let them override what Eugene just told you in conversation.
+1. **Conversation Memory** (PRIMARY) — What Eugene told you in this conversation. Always prioritize this. If Eugene says his project is called "Project Nova", remember it — even if your notes mention different projects.
 
-## How to Behave
+2. **Brain (Knowledge Base)** (SECONDARY) — Eugene's notes, journals, documents. Use to enrich answers, but never override what Eugene just said.
 
-**Conversational First:**
-- Remember names, preferences, project details, and facts shared in this conversation
-- Refer back to earlier exchanges naturally ("Earlier you mentioned...")
-- If Eugene tells you something, REMEMBER IT — don't pretend to not know next message
-- Build on the conversation — don't start from scratch each time
+## Core Behaviors
+
+**Identity & Memory:**
+- If Eugene gives you a name ("call you X", "your name is X", "let's call you X"), YOU adopt that name — you are X
+- If Eugene introduces himself ("I'm Eugene", "my name is X"), remember THEIR name
+- Remember facts, preferences, projects, and decisions shared in conversation
+- Refer back naturally: "Earlier you mentioned...", "As you've called me..."
+
+**Conversation First:**
+- Build on prior exchanges, don't restart each message
+- If you know something from conversation, say so confidently
+- Never pretend to forget what was just discussed
 
 **Knowledge Base Second:**
-- When brain context appears, use it to add depth and cite sources
-- Distinguish clearly: "From our conversation..." vs "From your notes..."
-- If brain results seem unrelated to the actual question, focus on answering the question directly
-- Don't force brain context into every answer — only when it's genuinely relevant
+- Use brain context to add depth, cite sources briefly (filename only)
+- Say "From your notes..." vs "From our chat..."
+- Skip brain context if it's not genuinely relevant
 
 **Style:**
-- Be concise and direct by default
-- Use bullet points for lists
-- Cite brain sources briefly when referencing them (just the filename)
+- Concise, direct, use bullets for lists
+- Warm but not sycophantic
 - Ask clarifying questions when genuinely uncertain
-- Be warm but not sycophantic
-
-**Special Contexts:**
-- If Eugene shares a personal fact, acknowledge and remember it
-- If asked to recall something from this conversation, do so confidently
-- If Eugene uploads a file, analyze it directly
-- Suggest saving important insights to brain when appropriate""",
+- If Eugene uploads a file, analyze it directly""",
         )
 
         # Initialize performance monitoring
@@ -204,6 +271,9 @@ class SlackAgent(Agent):
             self.logger.info(
                 f"Model switching enabled. Available providers: {list(self.model_manager.providers.keys())}"
             )
+        
+        # API key store for user-provided keys (Gemini, etc.)
+        self.api_key_store = ApiKeyStore()
 
         # Feature flags
         self.enable_file_attachments = config.get("enable_file_attachments", True)
@@ -225,18 +295,102 @@ class SlackAgent(Agent):
             # If user has already selected a model via /model, it's considered available
             if config.get("provider_id"):
                 return True
-            # Otherwise fall through to default check
+            # If no explicit selection made, allow fallback to default Ollama
+            # Don't block messages just because /model wasn't used
+            return True
 
         if not self.model:
             return True  # No specific model configured, use default
 
+        # Note: Don't try to call self.llm.list_models() here as it's async
+        # and we'd need to await it. Just trust the config is valid.
+        return True
+
+    async def _generate_with_provider(
+        self,
+        messages: list,
+        user_id: str,
+        say_func=None,
+    ) -> tuple[str, str, bool]:
+        """
+        Generate LLM response using the appropriate provider.
+        
+        Checks if user has selected a cloud provider (e.g., Gemini) and uses it
+        if configured. Falls back to Ollama if cloud provider fails (e.g., quota).
+        
+        Args:
+            messages: List of Message objects for the conversation
+            user_id: Slack user ID (for API key lookup)
+            say_func: Optional say function to notify user of fallback
+            
+        Returns:
+            tuple of (response_text, model_used, quota_exhausted)
+        """
+        # Check if user has a Gemini key and Gemini is selected
+        gemini_key = self.api_key_store.get_key(user_id, "gemini")
+        config = self.model_manager.get_current_config() if self.enable_model_switching else {}
+        
+        provider_id = config.get("provider_id")
+        model_name = config.get("model_name")
+        
+        # If Gemini is selected and user has a key, try Gemini first
+        if provider_id == "gemini" and gemini_key:
+            try:
+                gemini = self.model_manager.providers.get("gemini")
+                if gemini:
+                    # Ensure key is set
+                    gemini.set_api_key(gemini_key)
+                    
+                    # Extract system prompt from messages
+                    system_prompt = None
+                    user_messages = []
+                    for msg in messages:
+                        if msg.role == "system":
+                            system_prompt = (system_prompt or "") + "\n" + msg.content
+                        else:
+                            user_messages.append(msg)
+                    
+                    # Build conversation prompt
+                    conversation_parts = []
+                    for msg in user_messages:
+                        role_label = "User" if msg.role == "user" else "Assistant"
+                        conversation_parts.append(f"{role_label}: {msg.content}")
+                    
+                    prompt = "\n\n".join(conversation_parts)
+                    
+                    response = gemini.generate(
+                        prompt=prompt,
+                        system_prompt=system_prompt,
+                        model_id=model_name,
+                    )
+                    
+                    self.logger.info(f"Generated response with Gemini ({model_name})")
+                    return response, f"gemini/{model_name}", False
+                    
+            except QuotaExhaustedError as e:
+                self.logger.warning(f"Gemini quota exhausted for user {user_id}: {e}")
+                
+                # Notify user and fall back to Ollama
+                if say_func:
+                    await say_func(
+                        text="⚠️ *Gemini daily quota exhausted* — falling back to Ollama. "
+                             "Use `/model` to switch providers, or try Gemini again tomorrow.",
+                        # Don't add to thread - send as DM
+                    )
+                
+                # Fall through to Ollama below
+                
+            except Exception as e:
+                self.logger.error(f"Gemini generation failed: {e}")
+                # Fall through to Ollama
+        
+        # Default: Use Ollama
         try:
-            # Check if model exists in current LLM client's available models
-            available_models = self.llm.list_models()
-            return self.model in available_models
+            response = await self.llm.chat(messages=messages, model=self.model)
+            return response, f"ollama/{self.model}", False
         except Exception as e:
-            self.logger.warning(f"Failed to check model availability: {e}")
-            return False  # Assume unavailable if we can't check
+            self.logger.error(f"Ollama generation failed: {e}")
+            raise
 
     def _register_handlers(self):
         """Register Slack event handlers"""
@@ -499,6 +653,136 @@ class SlackAgent(Agent):
                     response_type="ephemeral",
                     replace_original=False,
                 )
+
+        # ==================================================================
+        # /apikey command - Manage API keys for cloud providers
+        # ==================================================================
+
+        @self.app.command("/apikey")
+        async def handle_apikey_command(ack, command, client):
+            """Handle /apikey command - open modal to manage API keys."""
+            await ack()
+
+            user_id = command["user_id"]
+            trigger_id = command["trigger_id"]
+
+            # Get current key status
+            gemini_key = self.api_key_store.get_key(user_id, "gemini")
+            gemini_masked = self.api_key_store.mask_key(gemini_key) if gemini_key else "(not set)"
+
+            # Build modal
+            modal = {
+                "type": "modal",
+                "callback_id": "apikey_submit",
+                "title": {"type": "plain_text", "text": "🔑 API Keys"},
+                "submit": {"type": "plain_text", "text": "Save"},
+                "close": {"type": "plain_text", "text": "Cancel"},
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "*Configure API keys for cloud AI providers*\n\nKeys are stored securely and used only by you."
+                        }
+                    },
+                    {"type": "divider"},
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*Google Gemini*\nCurrent: `{gemini_masked}`\n_Get a key at: https://aistudio.google.com/apikey_"
+                        }
+                    },
+                    {
+                        "type": "input",
+                        "block_id": "gemini_key_block",
+                        "optional": True,
+                        "element": {
+                            "type": "plain_text_input",
+                            "action_id": "gemini_key_input",
+                            "placeholder": {"type": "plain_text", "text": "AIza..."},
+                        },
+                        "label": {"type": "plain_text", "text": "New Gemini API Key"},
+                        "hint": {"type": "plain_text", "text": "Leave blank to keep current key"}
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "🗑️ Delete Gemini Key"},
+                                "action_id": "delete_gemini_key",
+                                "style": "danger",
+                                "confirm": {
+                                    "title": {"type": "plain_text", "text": "Delete API Key?"},
+                                    "text": {"type": "plain_text", "text": "This will remove your Gemini API key."},
+                                    "confirm": {"type": "plain_text", "text": "Delete"},
+                                    "deny": {"type": "plain_text", "text": "Cancel"}
+                                }
+                            }
+                        ]
+                    },
+                    {"type": "divider"},
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "mrkdwn",
+                                "text": "💡 After setting, use `/model` to select Gemini models.\nGemini has a daily quota — if exhausted, switch models."
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            await client.views_open(trigger_id=trigger_id, view=modal)
+            self.logger.info(f"User {user_id} opened /apikey modal")
+
+        @self.app.view("apikey_submit")
+        async def handle_apikey_submit(ack, body, client, view):
+            """Handle API key modal submission."""
+            await ack()
+
+            user_id = body["user"]["id"]
+            values = view["state"]["values"]
+
+            # Extract Gemini key
+            gemini_key = values.get("gemini_key_block", {}).get("gemini_key_input", {}).get("value")
+
+            if gemini_key:
+                # Store the new key
+                self.api_key_store.set_key(user_id, "gemini", gemini_key.strip())
+
+                # Update the model manager's Gemini provider if it exists
+                if "gemini" in self.model_manager.providers:
+                    gemini_provider = self.model_manager.providers["gemini"]
+                    gemini_provider.set_api_key(gemini_key.strip())
+
+                self.logger.info(f"User {user_id} updated Gemini API key")
+
+                # Notify user
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text=f"✅ Gemini API key saved! Use `/model` to select a Gemini model."
+                )
+            else:
+                # User didn't change the key, that's okay
+                pass
+
+        @self.app.action("delete_gemini_key")
+        async def handle_delete_gemini_key(ack, body, client):
+            """Handle Gemini key deletion."""
+            await ack()
+
+            user_id = body["user"]["id"]
+            self.api_key_store.delete_key(user_id, "gemini")
+            self.logger.info(f"User {user_id} deleted Gemini API key")
+
+            # Notify user
+            await client.chat_postMessage(
+                channel=user_id,
+                text="🗑️ Your Gemini API key has been deleted."
+            )
 
         # ==================================================================
         # /index command and modal-based action handlers
@@ -1140,9 +1424,22 @@ class SlackAgent(Agent):
 
         messages.append(Message(role="user", content=text))
 
-        # Generate response using LLM
+        # Generate response using provider-aware method
+        # Handles Gemini/Ollama selection and quota fallback
         try:
-            response = await self.llm.chat(messages=messages, model=self.model)
+            response, model_used, quota_exhausted = await self._generate_with_provider(
+                messages=messages,
+                user_id=user_id,
+            )
+            
+            # If quota was exhausted, prepend a notice
+            if quota_exhausted:
+                response = (
+                    "⚠️ *Gemini quota exhausted — using Ollama*\n"
+                    "Use `/model` to switch providers.\n\n"
+                    + response
+                )
+                
         except Exception as e:
             self.logger.error(f"LLM generation failed: {e}")
             return "Sorry, my AI backend is temporarily unavailable. Please try again shortly."
@@ -1162,7 +1459,7 @@ class SlackAgent(Agent):
                 role="assistant",
                 content=response,
                 metadata={
-                    "model": self.model,
+                    "model": model_used,
                     "latency": latency,
                     "context_used": bool(full_context),
                     "past_convos_found": bool(past_context),

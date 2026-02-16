@@ -112,13 +112,12 @@ class ModelManager:
             except Exception:
                 pass
 
-        # Check Google Gemini
-        if os.getenv("GOOGLE_API_KEY"):
-            try:
-                gemini = GeminiProvider()
-                self.providers["gemini"] = gemini
-            except Exception:
-                pass
+        # Always register Gemini (even without API key - can be added via /apikey)
+        try:
+            gemini = GeminiProvider()  # Will check env var, but won't fail without it
+            self.providers["gemini"] = gemini
+        except Exception:
+            pass
 
         # Check Anthropic Claude
         if os.getenv("ANTHROPIC_API_KEY"):

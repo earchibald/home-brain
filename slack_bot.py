@@ -145,7 +145,7 @@ class SlackBotService:
             "enable_search": os.getenv("SLACK_ENABLE_SEARCH", "true").lower()
             == "true",
             "max_search_results": int(os.getenv("SLACK_MAX_SEARCH_RESULTS", "3")),
-            "enable_model_switching": os.getenv("ENABLE_MODEL_SWITCHING", "false").lower()
+            "enable_model_switching": os.getenv("ENABLE_MODEL_SWITCHING", "true").lower()
             == "true",
             "enable_web_search": os.getenv("ENABLE_WEB_SEARCH", "true").lower()
             == "true",

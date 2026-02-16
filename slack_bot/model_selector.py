@@ -88,6 +88,14 @@ def build_model_selector_ui(manager: ModelManager) -> List[Dict]:
         if "ollama" in provider["id"].lower():
             models = [m for m in models if "llama" in m.lower()]
 
+        # For Gemini, check if it's configured
+        if provider["id"] == "gemini":
+            # Check if provider has API key set
+            gemini_provider = manager.providers.get("gemini")
+            if gemini_provider and not gemini_provider.is_configured():
+                # Show hint to configure API key
+                continue  # Skip Gemini models if not configured
+
         # Add models with shortened names to avoid overflow
         for model in models[:5]:  # Limit to 5 models per provider
             # Shorten provider name for display
@@ -105,6 +113,19 @@ def build_model_selector_ui(manager: ModelManager) -> List[Dict]:
                     "value": f"{provider['id']}:{model}",
                 }
             )
+
+    # Add Gemini API key prompt if not configured
+    gemini_provider = manager.providers.get("gemini")
+    if gemini_provider and not gemini_provider.is_configured():
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "💡 *Want Gemini?* Use `/apikey` to add your Google API key."
+                }
+            }
+        )
 
     if model_options:
         blocks.append(
