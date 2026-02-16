@@ -3,7 +3,7 @@ Slack Agent - Multi-turn conversation bot with brain context
 
 Connects to Slack via Socket Mode, handles DM messages with:
 - Per-user conversation history
-- Khoj context search
+- Semantic brain search
 - Ollama LLM inference
 - Automatic summarization for long conversations
 """
@@ -30,6 +30,7 @@ from clients.brain_io import BrainIO
 from clients.conversation_manager import ConversationManager
 from clients.cxdb_client import CxdbClient
 from clients.vaultwarden_client import get_secret
+from clients.web_search_client import WebSearchClient
 
 # Import new slack_bot modules for enhanced features
 from slack_bot.message_processor import detect_file_attachments
@@ -107,8 +108,8 @@ class SlackAgent(Agent):
         self.socket_handler = None
 
         # Initialize clients
-        self.khoj = SemanticSearchClient(
-            base_url=config.get("khoj_url", "http://nuc-1.local:42110")
+        self.search = SemanticSearchClient(
+            base_url=config.get("search_url", "http://nuc-1.local:9514")
         )
         self.llm = OllamaClient(
             base_url=config.get("ollama_url", "http://m1-mini.local:11434")
@@ -132,67 +133,60 @@ class SlackAgent(Agent):
         # Configuration
         self.model = config.get("model", "llama3.2")
         self.max_context_tokens = config.get("max_context_tokens", 6000)
-        # Reserve tokens for context injection (cxdb + Khoj results)
+        # Reserve tokens for context injection (cxdb + search results)
         self.context_budget = config.get("context_budget", 2000)
         self.summarization_threshold = config.get(
             "summarization_threshold",
             max(self.max_context_tokens - self.context_budget, 2000),
         )
-        self.enable_khoj_search = config.get("enable_khoj_search", True)
+        self.enable_search = config.get("enable_search", True)
         self.max_search_results = config.get("max_search_results", 3)
         self.min_relevance_score = config.get("min_relevance_score", 0.7)
+        
+        # Web search configuration
+        self.enable_web_search = config.get("enable_web_search", True)
+        self.web_search_provider = config.get("web_search_provider", "duckduckgo")
+        self.web_context_budget = config.get("web_context_budget", 1500)
+        self.web_search = WebSearchClient(
+            provider=self.web_search_provider,
+            api_key=config.get("tavily_api_key"),
+            max_results=3,
+        )
+        
         self.system_prompt = config.get(
             "system_prompt",
-            """You are Brain Assistant, an AI agent integrated with Eugene's personal knowledge management system. Your mission is to serve as an active thought partner, helping capture insights, retrieve knowledge, and support deep work.
+            """You are Brain Assistant, Eugene's personal AI companion. You have two sources of knowledge:
 
-## Your Capabilities
+1. **Conversation Memory** — You remember what Eugene has told you in this conversation. This is your PRIMARY context. Always prioritize what was said earlier in our chat.
 
-**Memory & Context:**
-- Access to Eugene's semantic brain (markdown notes, journals, projects, ideas)
-- Multi-turn conversation history for continuity across sessions
-- File upload analysis (text, PDF, code)
-- When brain context appears above, it's highly relevant—cite sources when referencing it
+2. **Brain (Knowledge Base)** — A searchable archive of Eugene's notes, journals, and documents. When you have brain search results, use them to enrich your answers — but never let them override what Eugene just told you in conversation.
 
-**Your Role:**
-1. **Knowledge Retrieval** - Surface relevant past notes, ideas, and context from the brain
-2. **Synthesis** - Connect ideas across conversations and documents
-3. **Capture** - Help formulate thoughts worth preserving in the brain
-4. **Workflows** - Guide Eugene through processes (brainstorming, research, review)
-5. **Analysis** - Process uploaded files, code, research papers
+## How to Behave
 
-## Operating Principles
+**Conversational First:**
+- Remember names, preferences, project details, and facts shared in this conversation
+- Refer back to earlier exchanges naturally ("Earlier you mentioned...")
+- If Eugene tells you something, REMEMBER IT — don't pretend to not know next message
+- Build on the conversation — don't start from scratch each time
 
-**Be Proactive:**
-- Suggest connections to existing knowledge when spotted
-- Recommend capturing important insights as notes
-- Propose workflows when detecting decision points
-- Ask clarifying questions to improve understanding
+**Knowledge Base Second:**
+- When brain context appears, use it to add depth and cite sources
+- Distinguish clearly: "From our conversation..." vs "From your notes..."
+- If brain results seem unrelated to the actual question, focus on answering the question directly
+- Don't force brain context into every answer — only when it's genuinely relevant
 
-**Be Grounded:**
-- Cite brain sources when referencing stored knowledge
-- Distinguish between brain-retrieved facts and general knowledge
-- Admit uncertainty rather than guessing
-- When files are uploaded (marked "## Files Uploaded by User:"), analyze them directly—never suggest external tools
+**Style:**
+- Be concise and direct by default
+- Use bullet points for lists
+- Cite brain sources briefly when referencing them (just the filename)
+- Ask clarifying questions when genuinely uncertain
+- Be warm but not sycophantic
 
-**Be Concise:**
-- Default to focused, actionable responses
-- Use bullet points for lists and clarity
-- Expand depth when requested or contextually appropriate
-- Keep citations brief (source file name)
-
-**Conversation Flow:**
-- Remember context from earlier in this conversation
-- Reference past decisions and agreements made in this thread
-- Build on previous exchanges rather than starting fresh each time
-
-## Special Contexts
-
-If Eugene mentions he's **starting a project**, help scope it and suggest creating a project note.
-If Eugene is **researching**, offer to summarize findings for brain storage.
-If Eugene is **debugging**, offer structured troubleshooting.
-If Eugene **uploads a file**, treat it as primary context—analyze and discuss it directly.
-
-You're not just answering questions—you're helping build and navigate a system of thought.""",
+**Special Contexts:**
+- If Eugene shares a personal fact, acknowledge and remember it
+- If asked to recall something from this conversation, do so confidently
+- If Eugene uploads a file, analyze it directly
+- Suggest saving important insights to brain when appropriate""",
         )
 
         # Initialize performance monitoring
@@ -269,8 +263,23 @@ You're not just answering questions—you're helping build and navigate a system
             user_message = event.get(
                 "text", ""
             ).strip()  # Keep original message separate
-            thread_ts = event.get("thread_ts", event.get("ts"))
             channel_id = event.get("channel")
+
+            # Conversation key: For DMs, use channel_id so ALL messages
+            # between this user and the bot share ONE persistent conversation.
+            # For threaded messages, use thread_ts so threads are separate.
+            # Previously this used event["ts"] (unique per message), which
+            # meant every DM created a new conversation — zero memory.
+            if channel_type == "im":
+                thread_ts = event.get("thread_ts") or channel_id
+            else:
+                thread_ts = event.get("thread_ts", event.get("ts"))
+
+            self.logger.info(
+                f"Conversation key: channel_type={channel_type}, "
+                f"event.thread_ts={event.get('thread_ts')}, "
+                f"channel_id={channel_id}, resolved thread_ts={thread_ts}"
+            )
 
             self.logger.debug(f"Message event keys: {list(event.keys())}")
             self.logger.debug(f"Message has 'files' key: {'files' in event}")
@@ -508,7 +517,7 @@ You're not just answering questions—you're helping build and navigate a system
 
             # Fetch data and update the modal in-place
             try:
-                stats = await self.khoj.get_registry_stats()
+                stats = await self.search.get_registry_stats()
                 if not stats:
                     stats = {"total_files": 0, "total_chunks": 0, "gates": {}, "ignored_count": 0}
                 dashboard = build_index_dashboard(stats)
@@ -524,7 +533,7 @@ You're not just answering questions—you're helping build and navigate a system
             """Fetch fresh stats and update the modal to the dashboard view."""
             loading = build_loading_view("Refreshing dashboard...")
             await client.views_update(view_id=view_id, view=loading)
-            stats = await self.khoj.get_registry_stats()
+            stats = await self.search.get_registry_stats()
             if not stats:
                 stats = {"total_files": 0, "total_chunks": 0, "gates": {}, "ignored_count": 0}
             await client.views_update(view_id=view_id, view=build_index_dashboard(stats))
@@ -548,7 +557,7 @@ You're not just answering questions—you're helping build and navigate a system
             await client.views_update(view_id=view_id, view=loading)
             try:
                 offset = int(action.get("value", "0"))
-                page = await self.khoj.list_documents(offset=offset, limit=PAGE_SIZE)
+                page = await self.search.list_documents(offset=offset, limit=PAGE_SIZE)
                 browser = build_document_browser(
                     items=[{
                         "path": d.path, "chunks": d.chunks,
@@ -572,7 +581,7 @@ You're not just answering questions—you're helping build and navigate a system
                 parts = action.get("value", "0|").split("|", 1)
                 offset = int(parts[0])
                 folder_filter = parts[1] if len(parts) > 1 and parts[1] else None
-                page = await self.khoj.list_documents(offset=offset, limit=PAGE_SIZE, folder=folder_filter)
+                page = await self.search.list_documents(offset=offset, limit=PAGE_SIZE, folder=folder_filter)
                 browser = build_document_browser(
                     items=[{
                         "path": d.path, "chunks": d.chunks,
@@ -596,7 +605,7 @@ You're not just answering questions—you're helping build and navigate a system
             loading = build_loading_view(f"Ignoring {file_path}...")
             await client.views_update(view_id=view_id, view=loading)
             try:
-                success = await self.khoj.ignore_document(file_path)
+                success = await self.search.ignore_document(file_path)
                 if success:
                     view = build_status_view(
                         "Document Ignored",
@@ -638,7 +647,7 @@ You're not just answering questions—you're helping build and navigate a system
             parent_view_id = body.get("view", {}).get("previous_view_id")
 
             try:
-                success = await self.khoj.delete_document(file_path)
+                success = await self.search.delete_document(file_path)
                 if success:
                     msg = f"`{file_path}` has been deleted from disk and removed from the index."
                     emoji = "🗑️"
@@ -667,7 +676,7 @@ You're not just answering questions—you're helping build and navigate a system
             await ack()
             trigger_id = body["trigger_id"]
             try:
-                gates = await self.khoj.get_gates()
+                gates = await self.search.get_gates()
                 setup_view = build_gate_setup(gates)
                 await client.views_push(trigger_id=trigger_id, view=setup_view)
             except Exception as e:
@@ -689,7 +698,7 @@ You're not just answering questions—you're helping build and navigate a system
             await ack(response_action="update", view=build_loading_view("Saving gates..."))
 
             try:
-                success = await self.khoj.replace_gates(gates)
+                success = await self.search.replace_gates(gates)
                 if success:
                     summary = "\n".join(
                         f"{'🔒' if m == 'readonly' else '📝'} `{d}` → {m}"
@@ -715,7 +724,7 @@ You're not just answering questions—you're helping build and navigate a system
             loading = build_loading_view("Starting full re-index...")
             await client.views_update(view_id=view_id, view=loading)
             try:
-                await self.khoj.trigger_reindex(force=True)
+                await self.search.trigger_reindex(force=True)
                 result = build_status_view(
                     "Reindex Started",
                     "Full re-index started. This may take a few minutes.\n"
@@ -801,7 +810,7 @@ You're not just answering questions—you're helping build and navigate a system
                     )
                     
                     # Upload to brain
-                    result = await self.khoj.upload_document(
+                    result = await self.search.upload_document(
                         file_path=target_path,
                         content=content,
                         filename=file_name,
@@ -984,7 +993,7 @@ You're not just answering questions—you're helping build and navigate a system
             user_id: Slack user ID
             text: Message text (may include file attachment content)
             thread_id: Thread timestamp
-            user_message: Original user message (without attachments), used for Khoj search
+            user_message: Original user message (without attachments), used for brain search
             has_attachments: Whether the message includes file attachments
 
         Returns:
@@ -1029,17 +1038,30 @@ You're not just answering questions—you're helping build and navigate a system
             self.logger.warning(f"Past conversation search failed: {e}")
 
         # ---- Search brain for context (if enabled) ----
-        # Skip Khoj search when files are attached - the file IS the context
-        # Use original user message for Khoj search, not combined text with attachments
+        # Skip search when files are attached - the file IS the context
+        # Use original user message for search, not combined text with attachments
         context = ""
-        khoj_query = user_message if user_message else text
-        # Truncate query to reasonable length for Khoj (avoid URL too long errors)
-        khoj_query = khoj_query[:500]
+        search_query = user_message if user_message else text
+        # Truncate query to reasonable length (avoid URL too long errors)
+        search_query = search_query[:500]
 
-        if self.enable_khoj_search and len(khoj_query) > 10 and not has_attachments:
+        # Skip brain search for conversational messages (greetings, follow-ups,
+        # recall questions) — these should be answered from conversation history
+        is_conv = self._is_conversational(search_query)
+        should_search = (
+            self.enable_search
+            and len(search_query) > 10
+            and not has_attachments
+            and not is_conv
+        )
+
+        if is_conv:
+            self.logger.info(f"Skipping brain search for conversational message: '{search_query[:60]}'")
+
+        if should_search:
             try:
-                search_results = await self.khoj.search(
-                    query=khoj_query,
+                search_results = await self.search.search(
+                    query=search_query,
                     content_type="markdown",
                     limit=self.max_search_results,
                 )
@@ -1075,11 +1097,27 @@ You're not just answering questions—you're helping build and navigate a system
                     )
 
             except Exception as e:
-                self.logger.warning(f"Khoj search failed: {e}")
+                self.logger.warning(f"Brain search failed: {e}")
                 # Continue without context
 
-        # ---- Combine past conversations + brain context ----
-        full_context = past_context + context
+        # ---- Web search for current information (if enabled) ----
+        web_context = ""
+        should_web, web_reason = self._should_web_search(search_query)
+        if should_web and self.enable_web_search and not has_attachments:
+            try:
+                self.logger.info(f"Web search triggered: {web_reason}")
+                web_results = await self.web_search.search(search_query, limit=3)
+                if web_results:
+                    web_context = self.web_search.format_results(
+                        web_results, max_snippet_length=self.web_context_budget // 5
+                    )
+                    self.logger.info(f"Found {len(web_results)} web search results")
+            except Exception as e:
+                self.logger.warning(f"Web search failed: {e}")
+                # Continue without web context
+
+        # ---- Combine past conversations + brain context + web context ----
+        full_context = past_context + context + web_context
 
         # Build prompt
         messages = []
@@ -1087,16 +1125,20 @@ You're not just answering questions—you're helping build and navigate a system
         # Add system prompt
         messages.append(Message(role="system", content=self.system_prompt))
 
-        # Add conversation history
+        # Add conversation history — this is the PRIMARY context
         for msg in history:
             messages.append(Message(role=msg["role"], content=msg["content"]))
 
-        # Add current user message with optional context
-        user_content = text
+        # Add current user message FIRST, then supplementary context
+        # Context is injected as a system message AFTER history but BEFORE
+        # the user message so the LLM sees the conversation flow naturally.
         if full_context:
-            user_content = f"{full_context}\n\n**User message:** {text}"
+            messages.append(Message(
+                role="system",
+                content=f"[Supplementary context — use only if relevant to the user's message]\n{full_context}"
+            ))
 
-        messages.append(Message(role="user", content=user_content))
+        messages.append(Message(role="user", content=text))
 
         # Generate response using LLM
         try:
@@ -1124,6 +1166,7 @@ You're not just answering questions—you're helping build and navigate a system
                     "latency": latency,
                     "context_used": bool(full_context),
                     "past_convos_found": bool(past_context),
+                    "web_search_used": bool(web_context),
                 },
             )
         except Exception as e:
@@ -1133,7 +1176,7 @@ You're not just answering questions—you're helping build and navigate a system
         self.logger.info(
             f"Generated response for {user_id} in {latency:.2f}s "
             f"(history: {len(history)} msgs, context: {bool(full_context)}, "
-            f"past_convos: {bool(past_context)})"
+            f"past_convos: {bool(past_context)}, web_search: {bool(web_context)})"
         )
 
         # Record performance metrics
@@ -1149,6 +1192,120 @@ You're not just answering questions—you're helping build and navigate a system
                 self.logger.warning(f"Failed to record performance metric: {e}")
 
         return response
+
+    def _should_web_search(self, query: str) -> tuple[bool, str]:
+        """
+        Determine if query should trigger web search.
+        
+        Web search is triggered for:
+        - Current events (news, recent updates)
+        - External factual lookups (populations, definitions, etc.)
+        
+        Web search is skipped for:
+        - Personal context queries (notes, journals, past conversations)
+        - Very short queries
+        
+        Args:
+            query: The user's message text
+            
+        Returns:
+            Tuple of (should_search: bool, reason: str)
+        """
+        query_lower = query.lower()
+        
+        # Skip very short queries
+        if len(query) < 15:
+            return (False, "query too short")
+        
+        # Keywords suggesting current events
+        current_event_patterns = [
+            "today", "yesterday", "this week", "this month",
+            "latest", "recent", "current", "now", "breaking",
+            "news about", "what happened", "update on",
+            "what's happening", "what is happening",
+            "stock price", "weather", "score", "game",
+            "2025", "2026",  # Current/future years
+        ]
+        
+        # Keywords suggesting external lookup (not personal notes)
+        external_patterns = [
+            "what is the population", "how many people",
+            "who is the", "when was", "when did",
+            "define ", "explain what", "tell me about",
+            "official documentation", "according to",
+            "how do i ", "how to ",
+            "search the web", "google ",
+            "look up", "find out",
+        ]
+        
+        # Keywords suggesting personal context (prefer brain search only)
+        personal_patterns = [
+            "my notes", "my journal", "i wrote", "i mentioned",
+            "we discussed", "my project", "my work",
+            "remember when", "last time we", "earlier we",
+            "my brain", "from my", "in my notes",
+            "what did i", "what do i",
+        ]
+        
+        # Check for personal patterns first (skip web search)
+        if any(p in query_lower for p in personal_patterns):
+            return (False, "personal context")
+        
+        # Check for current event patterns
+        if any(p in query_lower for p in current_event_patterns):
+            return (True, "current events")
+        
+        # Check for external lookup patterns
+        if any(p in query_lower for p in external_patterns):
+            return (True, "external lookup")
+        
+        # Default: no web search (prefer brain context)
+        return (False, "default to brain")
+
+    @staticmethod
+    def _is_conversational(message: str) -> bool:
+        """Check if a message is conversational (should use chat history, not brain search).
+
+        Returns True for greetings, follow-ups, personal fact sharing, recall
+        questions, and other messages where brain document search would be
+        irrelevant or harmful (biasing the LLM toward documents over memory).
+
+        Args:
+            message: The user's message text
+
+        Returns:
+            True if the message is conversational and should skip brain search
+        """
+        msg = message.lower().strip()
+
+        # Very short messages are almost always conversational
+        if len(msg) < 30:
+            return True
+
+        conversational_patterns = [
+            # Greetings
+            "hello", "hey", "hi ", "hi!", "howdy", "good morning", "good afternoon",
+            "good evening", "what's up", "how are you",
+            # Follow-ups and recall
+            "what did i", "what was", "do you remember", "earlier i",
+            "i just said", "i told you", "i mentioned", "what project",
+            "what name", "what did we", "remember when", "you said",
+            "we were talking", "going back to", "as i said",
+            "can you recall", "what's my", 
+            # Personal fact sharing
+            "my name is", "call me", "i'm called", "i go by",
+            "i'm working on", "i'm building", "i prefer",
+            "i like to be called",
+            # Conversation management
+            "thank you", "thanks", "got it", "ok", "okay",
+            "sure", "yes", "no", "right", "correct",
+            "never mind", "forget it", "let's move on",
+            # Meta-conversational
+            "can you help", "i need help", "let's talk about",
+            "i want to discuss", "can we",
+        ]
+
+        return any(p in msg for p in conversational_patterns)
 
     @staticmethod
     def _should_suggest_save(message: str) -> bool:
@@ -1234,13 +1391,13 @@ You're not just answering questions—you're helping build and navigate a system
         """Check if all dependencies are available"""
         errors = []
 
-        # Check Khoj
+        # Check semantic search
         try:
-            await self.khoj.health_check()
-            self.logger.info("✅ Khoj connection OK")
+            await self.search.health_check()
+            self.logger.info("✅ Semantic search connection OK")
         except Exception as e:
-            errors.append(f"Khoj unavailable: {e}")
-            self.logger.warning(f"⚠️ Khoj unavailable: {e}")
+            errors.append(f"Search unavailable: {e}")
+            self.logger.warning(f"⚠️ Search unavailable: {e}")
 
         # Check Ollama
         try:
@@ -1267,6 +1424,16 @@ You're not just answering questions—you're helping build and navigate a system
         else:
             self.logger.info("✅ Brain folder OK")
 
+        # Check web search (non-critical)
+        if self.enable_web_search:
+            try:
+                if await self.web_search.health_check():
+                    self.logger.info("✅ Web search OK")
+                else:
+                    self.logger.warning("⚠️ Web search unavailable (will continue without)")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Web search unavailable: {e} (will continue without)")
+
         # Check Slack auth
         try:
             auth_test = await self.app.client.auth_test()
@@ -1288,23 +1455,27 @@ if __name__ == "__main__":
 
     # Test configuration
     config = {
-        "khoj_url": os.getenv("KHOJ_URL", "http://nuc-1.local:42110"),
+        "search_url": os.getenv("SEARCH_URL", "http://nuc-1.local:9514"),
         "ollama_url": os.getenv("OLLAMA_URL", "http://m1-mini.local:11434"),
         "brain_folder": os.getenv("BRAIN_FOLDER", "/home/earchibald/brain"),
         "model": os.getenv("SLACK_MODEL", "llama3.2"),
         "max_context_tokens": 6000,
-        "enable_khoj_search": True,
+        "enable_search": True,
         "max_search_results": 3,
+        "enable_web_search": os.getenv("ENABLE_WEB_SEARCH", "true").lower() == "true",
+        "web_search_provider": os.getenv("WEB_SEARCH_PROVIDER", "duckduckgo"),
+        "tavily_api_key": os.getenv("TAVILY_API_KEY"),
         "notification": {
             "enabled": True
         },
     }
 
     print("🚀 Starting Slack agent...")
-    print(f"   Khoj: {config['khoj_url']}")
+    print(f"   Search: {config['search_url']}")
     print(f"   Ollama: {config['ollama_url']}")
     print(f"   Brain: {config['brain_folder']}")
     print(f"   Model: {config['model']}")
+    print(f"   Web Search: {'enabled' if config['enable_web_search'] else 'disabled'} ({config['web_search_provider']})")
 
     agent = SlackAgent(config)
 

@@ -79,7 +79,7 @@ class SlackBotService:
         ]
 
         optional = {
-            "KHOJ_URL": "http://nuc-1.local:42110",
+            "SEARCH_URL": "http://nuc-1.local:9514",
             "OLLAMA_URL": "http://m1-mini.local:11434",
             "BRAIN_FOLDER": "/home/earchibald/brain",
             "NTFY_TOPIC": "brain-notifications",
@@ -107,7 +107,7 @@ class SlackBotService:
 
         # Print configuration
         print("\n✅ Configuration:")
-        print(f"   Khoj:    {os.getenv('KHOJ_URL')}")
+        print(f"   Search: {os.getenv('SEARCH_URL')}")
         print(f"   Ollama:  {os.getenv('OLLAMA_URL')}")
         print(f"   Brain:   {os.getenv('BRAIN_FOLDER')}")
         print(f"   Notify:  ntfy.sh/{os.getenv('NTFY_TOPIC')}")
@@ -137,16 +137,20 @@ class SlackBotService:
 
         # Create agent configuration
         config = {
-            "khoj_url": os.getenv("KHOJ_URL"),
+            "search_url": os.getenv("SEARCH_URL"),
             "ollama_url": os.getenv("OLLAMA_URL"),
             "brain_path": os.getenv("BRAIN_FOLDER"),
             "model": os.getenv("SLACK_MODEL", "llama3.2"),
             "max_context_tokens": int(os.getenv("SLACK_MAX_CONTEXT_TOKENS", "6000")),
-            "enable_khoj_search": os.getenv("SLACK_ENABLE_SEARCH", "true").lower()
+            "enable_search": os.getenv("SLACK_ENABLE_SEARCH", "true").lower()
             == "true",
             "max_search_results": int(os.getenv("SLACK_MAX_SEARCH_RESULTS", "3")),
-            "enable_model_switching": os.getenv("ENABLE_MODEL_SWITCHING", "true").lower()
+            "enable_model_switching": os.getenv("ENABLE_MODEL_SWITCHING", "false").lower()
             == "true",
+            "enable_web_search": os.getenv("ENABLE_WEB_SEARCH", "true").lower()
+            == "true",
+            "web_search_provider": os.getenv("WEB_SEARCH_PROVIDER", "duckduckgo"),
+            "tavily_api_key": os.getenv("TAVILY_API_KEY"),
             "notification": {"enabled": True, "topic": os.getenv("NTFY_TOPIC")},
         }
 
