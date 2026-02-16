@@ -217,6 +217,84 @@ class CxdbClient:
         except httpx.HTTPStatusError as e:
             raise CxdbApiError(str(e), status_code=e.response.status_code) from e
 
+    async def search_conversations(
+        self, query: str, user_id: str = None, limit: int = 2
+    ) -> List[Dict]:
+        """Search past conversations for relevant context via cxdb API.
+
+        Iterates through recent contexts and turns, performing simple keyword
+        matching to find relevant past exchanges.
+
+        Args:
+            query: Search query text.
+            user_id: Optional user ID filter (unused currently).
+            limit: Maximum results to return.
+
+        Returns:
+            List of dicts with user_message, assistant_message, timestamp.
+        """
+        await self._ensure_client()
+
+        query_words = [w.lower() for w in query.split() if len(w) >= 3]
+        if not query_words:
+            return []
+
+        try:
+            contexts = await self.list_contexts()
+            results = []
+
+            for ctx in contexts[:20]:  # Limit context scan for performance
+                ctx_id = ctx.get("context_id")
+                if not ctx_id:
+                    continue
+
+                try:
+                    turns = await self.get_turns(ctx_id, limit=50)
+
+                    # Pair user/assistant turns
+                    for i in range(len(turns) - 1):
+                        if turns[i].get("type_id") != "chat.message":
+                            continue
+                        if turns[i + 1].get("type_id") != "chat.message":
+                            continue
+
+                        user_data = turns[i].get("data", {})
+                        asst_data = turns[i + 1].get("data", {})
+
+                        if (
+                            user_data.get("role") != "user"
+                            or asst_data.get("role") != "assistant"
+                        ):
+                            continue
+
+                        combined = (
+                            user_data.get("content", "")
+                            + " "
+                            + asst_data.get("content", "")
+                        ).lower()
+                        score = sum(1 for w in query_words if w in combined)
+
+                        if score > 0:
+                            results.append(
+                                {
+                                    "user_message": user_data.get("content", "")[:200],
+                                    "assistant_message": asst_data.get("content", "")[
+                                        :200
+                                    ],
+                                    "timestamp": turns[i].get("created_at", ""),
+                                    "score": score,
+                                }
+                            )
+                except Exception:
+                    continue
+
+            results.sort(key=lambda x: x.get("score", 0), reverse=True)
+            return results[:limit]
+
+        except Exception as e:
+            logger.warning(f"cxdb conversation search failed: {e}")
+            return []
+
     async def close(self):
         """Close the HTTP client."""
         if self.client:

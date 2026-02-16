@@ -9,6 +9,7 @@ Connects to Slack via Socket Mode, handles DM messages with:
 """
 
 import os
+import re
 import sys
 import asyncio
 from pathlib import Path
@@ -40,6 +41,8 @@ from slack_bot.index_manager import (
     build_document_browser,
     build_delete_confirmation,
     build_gate_setup,
+    build_loading_view,
+    build_status_view,
     parse_gate_config_text,
     PAGE_SIZE,
     ACTION_BROWSE,
@@ -51,13 +54,26 @@ from slack_bot.index_manager import (
     ACTION_SHOW_SETUP,
     ACTION_SETUP_SUBMIT,
     ACTION_REINDEX,
+    ACTION_BACK_DASHBOARD,
     ACTION_CONFIRM_DELETE,
     ACTION_CANCEL_DELETE,
+    CALLBACK_GATE_SETUP,
+    CALLBACK_CONFIRM_DELETE,
 )
 from slack_bot.exceptions import (
     FileDownloadError,
     UnsupportedFileTypeError,
     FileExtractionError,
+)
+from slack_bot.file_uploader import (
+    download_file_from_slack_async,
+    build_save_to_brain_prompt,
+    build_save_note_prompt,
+    build_save_note_folder_blocks,
+    build_folder_selection_blocks,
+    build_upload_result_blocks,
+    parse_file_value,
+    COMMON_DIRECTORIES,
 )
 
 # Import model switching components
@@ -116,8 +132,15 @@ class SlackAgent(Agent):
         # Configuration
         self.model = config.get("model", "llama3.2")
         self.max_context_tokens = config.get("max_context_tokens", 6000)
+        # Reserve tokens for context injection (cxdb + Khoj results)
+        self.context_budget = config.get("context_budget", 2000)
+        self.summarization_threshold = config.get(
+            "summarization_threshold",
+            max(self.max_context_tokens - self.context_budget, 2000),
+        )
         self.enable_khoj_search = config.get("enable_khoj_search", True)
         self.max_search_results = config.get("max_search_results", 3)
+        self.min_relevance_score = config.get("min_relevance_score", 0.7)
         self.system_prompt = config.get(
             "system_prompt",
             """You are Brain Assistant, an AI agent integrated with Eugene's personal knowledge management system. Your mission is to serve as an active thought partner, helping capture insights, retrieve knowledge, and support deep work.
@@ -253,30 +276,37 @@ You're not just answering questions—you're helping build and navigate a system
             self.logger.debug(f"Message has 'files' key: {'files' in event}")
 
             # Handle file attachments if present
-            file_content = ""
+            file_attachments_for_save = []  # Track files for "Save to Brain" button
             if self.enable_file_attachments:
                 attachments = detect_file_attachments(event)
                 self.logger.info(f"File attachments detected: {len(attachments)}")
                 for attachment in attachments:
-                    try:
-                        file_content += await self._process_file_attachment(
-                            attachment, channel_id, user_id
-                        )
-                    except Exception as e:
-                        self.logger.warning(
-                            f"Failed to process attachment {attachment['name']}: {e}"
-                        )
-                        # Continue - file processing failure shouldn't stop message handling
+                    # Track for save button (don't process content yet)
+                    file_attachments_for_save.append({
+                        "id": attachment.get("id", ""),
+                        "name": attachment.get("name", "unknown"),
+                        "size": attachment.get("size", 0),
+                        "url_private_download": attachment.get("url_private_download", ""),
+                    })
 
-            # Combine text and file content for LLM
-            has_attachments = bool(file_content)
-            text = (
-                f"{user_message}\n\n## Files Uploaded by User:\n{file_content}"
-                if file_content
-                else user_message
+            # If files were shared with no/minimal text, offer to save immediately (skip LLM)
+            # Check for truly empty message or just Slack's auto-generated upload text
+            is_file_only = (
+                file_attachments_for_save and 
+                (not user_message or len(user_message) < 10)  # Empty or very short (likely auto-generated)
             )
+            
+            self.logger.info(f"user_message='{user_message}' (len={len(user_message)}), file_only={is_file_only}")
+            
+            if is_file_only:
+                self.logger.info(f"File-only message, offering save prompt for {len(file_attachments_for_save)} files")
+                save_blocks = build_save_to_brain_prompt(file_attachments_for_save)
+                if save_blocks:
+                    await say(blocks=save_blocks, text="Save files to brain?")
+                return  # Don't process through LLM
 
-            if not text:
+            # If no text message and no files, nothing to do
+            if not user_message.strip():
                 return
 
             # Check if current model is available, prompt selection if not
@@ -289,11 +319,36 @@ You're not just answering questions—you're helping build and navigate a system
                 )
                 return
 
+            # If there are files WITH a text message, process file content for LLM context
+            file_content = ""
+            if file_attachments_for_save:
+                self.logger.info(f"Processing {len(file_attachments_for_save)} file(s) for LLM context")
+                for attachment in file_attachments_for_save:
+                    try:
+                        # Re-fetch full attachment info from event
+                        full_attachment = next(
+                            (a for a in detect_file_attachments(event) if a.get("id") == attachment["id"]),
+                            attachment
+                        )
+                        file_content += await self._process_file_attachment(
+                            full_attachment, channel_id, user_id
+                        )
+                    except Exception as e:
+                        self.logger.warning(f"Failed to process attachment {attachment['name']}: {e}")
+
+            # Combine text and file content for LLM
+            has_attachments = bool(file_content)
+            text = (
+                f"{user_message}\n\n## Files Uploaded by User:\n{file_content}"
+                if file_content
+                else user_message
+            )
+
             working_ts = None
             try:
                 # Send "working" indicator (customize based on attachment presence)
                 working_text = (
-                    "Ingesting attachment... 📎"
+                    "Analyzing attachment... 📎"
                     if file_content
                     else "Working on it... 🧠"
                 )
@@ -320,6 +375,24 @@ You're not just answering questions—you're helping build and navigate a system
 
                 # Send real response (directly in DM, not in thread)
                 await say(text=response)
+
+                # If files were shared with text, also offer to save them
+                if file_attachments_for_save:
+                    save_blocks = build_save_to_brain_prompt(file_attachments_for_save)
+                    if save_blocks:
+                        await say(blocks=save_blocks, text="Save files to brain?")
+
+                # If user shared important info, suggest saving as a note
+                if (
+                    not file_attachments_for_save
+                    and self._should_suggest_save(user_message)
+                ):
+                    note_blocks = build_save_note_prompt(user_message)
+                    if note_blocks:
+                        await say(
+                            blocks=note_blocks,
+                            text="Save this to your brain?",
+                        )
 
             except Exception as e:
                 error_msg = f"Sorry, I encountered an error: {str(e)}"
@@ -419,54 +492,88 @@ You're not just answering questions—you're helping build and navigate a system
                 )
 
         # ==================================================================
-        # /index command and action handlers
+        # /index command and modal-based action handlers
         # ==================================================================
 
         @self.app.command("/index")
-        async def handle_index_command(ack, respond, command):
-            """Handle /index command — show the index manager dashboard."""
+        async def handle_index_command(ack, command, client):
+            """Handle /index — open modal with loading state, then update with data."""
             await ack()
+
+            # Open modal immediately with loading view (uses trigger_id)
+            trigger_id = command["trigger_id"]
+            loading_view = build_loading_view()
+            result = await client.views_open(trigger_id=trigger_id, view=loading_view)
+            view_id = result["view"]["id"]
+
+            # Fetch data and update the modal in-place
             try:
                 stats = await self.khoj.get_registry_stats()
                 if not stats:
                     stats = {"total_files": 0, "total_chunks": 0, "gates": {}, "ignored_count": 0}
-                blocks = build_index_dashboard(stats)
-                await respond(text="Index Manager", blocks=blocks, response_type="ephemeral")
+                dashboard = build_index_dashboard(stats)
+                await client.views_update(view_id=view_id, view=dashboard)
                 self.logger.info(f"User {command['user_id']} opened /index dashboard")
             except Exception as e:
                 self.logger.error(f"Error handling /index command: {e}", exc_info=True)
-                await respond(text=f"⚠️ Error loading index manager: {e}", response_type="ephemeral")
+                error_view = build_status_view("Index Manager", f"Error loading dashboard: {e}", emoji="⚠️")
+                await client.views_update(view_id=view_id, view=error_view)
+
+        # --- helper to refresh dashboard in an existing modal ---
+        async def _update_to_dashboard(client, view_id):
+            """Fetch fresh stats and update the modal to the dashboard view."""
+            loading = build_loading_view("Refreshing dashboard...")
+            await client.views_update(view_id=view_id, view=loading)
+            stats = await self.khoj.get_registry_stats()
+            if not stats:
+                stats = {"total_files": 0, "total_chunks": 0, "gates": {}, "ignored_count": 0}
+            await client.views_update(view_id=view_id, view=build_index_dashboard(stats))
+
+        @self.app.action(ACTION_BACK_DASHBOARD)
+        async def handle_back_dashboard(ack, body, client):
+            """Return to the dashboard view."""
+            await ack()
+            view_id = body["view"]["id"]
+            try:
+                await _update_to_dashboard(client, view_id)
+            except Exception as e:
+                self.logger.error(f"Error returning to dashboard: {e}", exc_info=True)
 
         @self.app.action(ACTION_BROWSE)
-        async def handle_browse(ack, action, respond):
-            """Handle Browse Documents button — show paged document list."""
+        async def handle_browse(ack, body, action, client):
+            """Browse Documents — update modal with paged document list."""
             await ack()
+            view_id = body["view"]["id"]
+            loading = build_loading_view("Loading documents...")
+            await client.views_update(view_id=view_id, view=loading)
             try:
                 offset = int(action.get("value", "0"))
                 page = await self.khoj.list_documents(offset=offset, limit=PAGE_SIZE)
-                blocks = build_document_browser(
+                browser = build_document_browser(
                     items=[{
                         "path": d.path, "chunks": d.chunks,
                         "size": d.size, "gate": d.gate, "indexed_at": d.indexed_at,
                     } for d in page.items],
                     total=page.total, offset=page.offset, limit=PAGE_SIZE,
                 )
-                await respond(text="Documents", blocks=blocks, response_type="ephemeral", replace_original=True)
+                await client.views_update(view_id=view_id, view=browser)
             except Exception as e:
                 self.logger.error(f"Error browsing documents: {e}", exc_info=True)
-                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=False)
+                err = build_status_view("Documents", f"Error loading documents: {e}", emoji="⚠️")
+                await client.views_update(view_id=view_id, view=err)
 
         @self.app.action(ACTION_PAGE_NEXT)
         @self.app.action(ACTION_PAGE_PREV)
-        async def handle_page_nav(ack, action, respond):
-            """Handle pagination buttons."""
+        async def handle_page_nav(ack, body, action, client):
+            """Pagination — update modal with next/previous page."""
             await ack()
+            view_id = body["view"]["id"]
             try:
                 parts = action.get("value", "0|").split("|", 1)
                 offset = int(parts[0])
                 folder_filter = parts[1] if len(parts) > 1 and parts[1] else None
                 page = await self.khoj.list_documents(offset=offset, limit=PAGE_SIZE, folder=folder_filter)
-                blocks = build_document_browser(
+                browser = build_document_browser(
                     items=[{
                         "path": d.path, "chunks": d.chunks,
                         "size": d.size, "gate": d.gate, "indexed_at": d.indexed_at,
@@ -474,119 +581,356 @@ You're not just answering questions—you're helping build and navigate a system
                     total=page.total, offset=page.offset, limit=PAGE_SIZE,
                     folder_filter=folder_filter,
                 )
-                await respond(text="Documents", blocks=blocks, response_type="ephemeral", replace_original=True)
+                await client.views_update(view_id=view_id, view=browser)
             except Exception as e:
                 self.logger.error(f"Error in page navigation: {e}", exc_info=True)
-                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=False)
 
-        @self.app.action(ACTION_DOC_IGNORE)
-        async def handle_doc_ignore(ack, action, respond):
-            """Handle Ignore button — remove from index, add to ignore list."""
+        # --- per-document Ignore/Delete use regex matching on action_id ---
+
+        @self.app.action(re.compile(f"^{ACTION_DOC_IGNORE}_"))
+        async def handle_doc_ignore(ack, body, action, client):
+            """Ignore a document — update modal with feedback."""
             await ack()
+            view_id = body["view"]["id"]
             file_path = action.get("value", "")
+            loading = build_loading_view(f"Ignoring {file_path}...")
+            await client.views_update(view_id=view_id, view=loading)
             try:
                 success = await self.khoj.ignore_document(file_path)
                 if success:
-                    await respond(
-                        text=f"👁️ `{file_path}` removed from index and added to ignore list.\nIt will be re-indexed if its content changes.",
-                        response_type="ephemeral", replace_original=False,
+                    view = build_status_view(
+                        "Document Ignored",
+                        f"`{file_path}` removed from index and added to ignore list.",
+                        emoji="👁️",
                     )
                 else:
-                    await respond(text=f"⚠️ Failed to ignore `{file_path}`.", response_type="ephemeral", replace_original=False)
+                    view = build_status_view(
+                        "Ignore Failed",
+                        f"Failed to ignore `{file_path}`.",
+                        emoji="⚠️",
+                    )
+                await client.views_update(view_id=view_id, view=view)
             except Exception as e:
                 self.logger.error(f"Error ignoring document: {e}", exc_info=True)
-                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=False)
+                err = build_status_view("Error", str(e), emoji="⚠️")
+                await client.views_update(view_id=view_id, view=err)
 
-        @self.app.action(ACTION_DOC_DELETE)
-        async def handle_doc_delete_prompt(ack, action, respond):
-            """Handle Delete button — show confirmation dialog."""
+        @self.app.action(re.compile(f"^{ACTION_DOC_DELETE}_"))
+        async def handle_doc_delete_prompt(ack, body, action, client):
+            """Delete button — push a confirmation view on top."""
             await ack()
+            trigger_id = body["trigger_id"]
             file_path = action.get("value", "")
-            try:
-                info = await self.khoj.get_document_info(file_path)
-                gate = info.gate if info else "ungated"
-                blocks = build_delete_confirmation(file_path, gate)
-                await respond(text="Confirm Delete", blocks=blocks, response_type="ephemeral", replace_original=False)
-            except Exception as e:
-                self.logger.error(f"Error building delete confirmation: {e}", exc_info=True)
-                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=False)
+            confirm_view = build_delete_confirmation(file_path)
+            await client.views_push(trigger_id=trigger_id, view=confirm_view)
 
-        @self.app.action(ACTION_CONFIRM_DELETE)
-        async def handle_confirm_delete(ack, action, respond):
-            """Handle confirmed deletion — delete file from disk + index."""
-            await ack()
-            file_path = action.get("value", "")
+        @self.app.view(CALLBACK_CONFIRM_DELETE)
+        async def handle_confirm_delete(ack, view, body, client):
+            """User clicked 'Yes, Delete' in the confirmation modal."""
+            import json as _json
+            metadata = _json.loads(view.get("private_metadata", "{}"))
+            file_path = metadata.get("file_path", "")
+
+            # Acknowledge with an update showing progress
+            await ack(response_action="update", view=build_loading_view(f"Deleting {file_path}..."))
+
+            # The parent view (document browser) is underneath; get its id
+            parent_view_id = body.get("view", {}).get("previous_view_id")
+
             try:
                 success = await self.khoj.delete_document(file_path)
                 if success:
-                    await respond(
-                        text=f"🗑️ `{file_path}` has been deleted from disk and removed from the index.",
-                        response_type="ephemeral", replace_original=True,
-                    )
+                    msg = f"`{file_path}` has been deleted from disk and removed from the index."
+                    emoji = "🗑️"
                 else:
-                    await respond(
-                        text=f"⚠️ Failed to delete `{file_path}`. It may be in a read-only directory.",
-                        response_type="ephemeral", replace_original=True,
-                    )
+                    msg = f"Failed to delete `{file_path}`. It may be in a read-only directory."
+                    emoji = "⚠️"
             except Exception as e:
                 self.logger.error(f"Error deleting document: {e}", exc_info=True)
-                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=True)
+                msg = f"Error: {e}"
+                emoji = "⚠️"
 
-        @self.app.action(ACTION_CANCEL_DELETE)
-        async def handle_cancel_delete(ack, action, respond):
-            """Handle cancel deletion."""
-            await ack()
-            await respond(text="Deletion cancelled.", response_type="ephemeral", replace_original=True)
+            # Update the confirmation view with result + back button
+            result_view = build_status_view("Delete Result", msg, emoji=emoji)
+            # The ack already updated, so use views_update on current view
+            try:
+                await client.views_update(
+                    view_id=body["view"]["id"],
+                    view=result_view,
+                )
+            except Exception:
+                pass  # View may already be closed
 
         @self.app.action(ACTION_SHOW_SETUP)
-        async def handle_show_setup(ack, action, respond):
-            """Show the gate configuration UI."""
+        async def handle_show_setup(ack, body, client):
+            """Setup Gates — push a gate config form on top of the dashboard."""
             await ack()
+            trigger_id = body["trigger_id"]
             try:
                 gates = await self.khoj.get_gates()
-                blocks = build_gate_setup(gates)
-                await respond(text="Gate Setup", blocks=blocks, response_type="ephemeral", replace_original=True)
+                setup_view = build_gate_setup(gates)
+                await client.views_push(trigger_id=trigger_id, view=setup_view)
             except Exception as e:
                 self.logger.error(f"Error showing gate setup: {e}", exc_info=True)
-                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=False)
 
-        @self.app.action(ACTION_SETUP_SUBMIT)
-        async def handle_setup_submit(ack, body, respond):
-            """Handle gate config save from text area."""
-            await ack()
+        @self.app.view(CALLBACK_GATE_SETUP)
+        async def handle_gate_submit(ack, view, body, client):
+            """User clicked 'Save' in the gate setup modal."""
+            state = view.get("state", {}).get("values", {})
+            text = state.get("gate_config_block", {}).get("gate_config_input", {}).get("value", "")
+
             try:
-                # Extract text input from Block Kit state
-                state = body.get("state", {}).get("values", {})
-                gate_block = state.get("gate_config_block", {})
-                gate_input = gate_block.get("gate_config_input", {})
-                text = gate_input.get("value", "")
-
                 gates = parse_gate_config_text(text)
+            except ValueError as e:
+                await ack(response_action="errors", errors={"gate_config_block": str(e)})
+                return
+
+            # Acknowledge with loading
+            await ack(response_action="update", view=build_loading_view("Saving gates..."))
+
+            try:
                 success = await self.khoj.replace_gates(gates)
                 if success:
-                    gate_summary = "\n".join(f"  {'🔒' if m == 'readonly' else '📝'} `{d}` → {m}" for d, m in sorted(gates.items()))
-                    await respond(
-                        text=f"✅ Gates saved:\n{gate_summary}",
-                        response_type="ephemeral", replace_original=True,
+                    summary = "\n".join(
+                        f"{'🔒' if m == 'readonly' else '📝'} `{d}` → {m}"
+                        for d, m in sorted(gates.items())
                     )
+                    result = build_status_view("Gates Saved", f"Gate configuration updated:\n{summary}")
                 else:
-                    await respond(text="⚠️ Failed to save gate configuration.", response_type="ephemeral", replace_original=True)
-            except ValueError as e:
-                await respond(text=f"⚠️ Invalid gate config: {e}", response_type="ephemeral", replace_original=False)
+                    result = build_status_view("Save Failed", "Failed to save gate configuration.", emoji="⚠️")
+                await client.views_update(view_id=body["view"]["id"], view=result)
             except Exception as e:
-                self.logger.error(f"Error saving gate config: {e}", exc_info=True)
-                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=False)
+                self.logger.error(f"Error saving gates: {e}", exc_info=True)
+                err = build_status_view("Error", str(e), emoji="⚠️")
+                try:
+                    await client.views_update(view_id=body["view"]["id"], view=err)
+                except Exception:
+                    pass
 
         @self.app.action(ACTION_REINDEX)
-        async def handle_reindex(ack, action, respond):
-            """Handle Reindex All button."""
+        async def handle_reindex(ack, body, client):
+            """Reindex All — update modal with progress feedback."""
             await ack()
+            view_id = body["view"]["id"]
+            loading = build_loading_view("Starting full re-index...")
+            await client.views_update(view_id=view_id, view=loading)
             try:
                 await self.khoj.trigger_reindex(force=True)
-                await respond(text="🔄 Full re-index started. This may take a few minutes.", response_type="ephemeral", replace_original=False)
+                result = build_status_view(
+                    "Reindex Started",
+                    "Full re-index started. This may take a few minutes.\n"
+                    "You can close this dialog and check back later.",
+                    emoji="🔄",
+                )
+                await client.views_update(view_id=view_id, view=result)
             except Exception as e:
                 self.logger.error(f"Error triggering reindex: {e}", exc_info=True)
-                await respond(text=f"⚠️ Error: {e}", response_type="ephemeral", replace_original=False)
+                err = build_status_view("Error", str(e), emoji="⚠️")
+                await client.views_update(view_id=view_id, view=err)
+
+        # ==================================================================
+        # File Upload to Brain Handlers
+        # ==================================================================
+
+        # Store pending file uploads (keyed by user_id)
+        self._pending_uploads: Dict[str, List[Dict]] = {}
+
+        @self.app.action("save_file_to_brain")
+        async def handle_save_to_brain(ack, body, action, client):
+            """User clicked 'Save to Brain' - show folder selection."""
+            await ack()
+            channel = body["channel"]["id"]
+            user_id = body["user"]["id"]
+            
+            # Parse file info from action value
+            files = parse_file_value(action.get("value", ""))
+            if not files:
+                await client.chat_postMessage(
+                    channel=channel,
+                    text="⚠️ No files found to save.",
+                )
+                return
+            
+            # Store pending files for this user
+            self._pending_uploads[user_id] = files
+            
+            # Show folder selection
+            blocks = build_folder_selection_blocks(files, COMMON_DIRECTORIES)
+            await client.chat_postMessage(
+                channel=channel,
+                blocks=blocks,
+                text="Select a folder to save files to",
+            )
+
+        @self.app.action(re.compile(r"^upload_to_dir_"))
+        async def handle_upload_to_dir(ack, body, action, client):
+            """User selected a folder - upload files there."""
+            await ack()
+            channel = body["channel"]["id"]
+            user_id = body["user"]["id"]
+            
+            # Extract directory from action_id (e.g., "upload_to_dir_notes" -> "notes")
+            dir_name = action["action_id"].replace("upload_to_dir_", "")
+            
+            # Get pending files
+            files = self._pending_uploads.pop(user_id, [])
+            if not files:
+                await client.chat_postMessage(
+                    channel=channel,
+                    text="⚠️ No pending files. Please upload files again.",
+                )
+                return
+            
+            # Send progress message
+            progress_msg = await client.chat_postMessage(
+                channel=channel,
+                text=f"📤 Uploading {len(files)} file(s) to `{dir_name}/`...",
+            )
+            
+            # Process each file
+            results = []
+            for file_info in files:
+                file_url = file_info.get("url", "")
+                file_name = file_info.get("name", "unknown")
+                target_path = f"{dir_name}/{file_name}"
+                
+                try:
+                    # Download from Slack
+                    content = await download_file_from_slack_async(
+                        file_url, self.bot_token
+                    )
+                    
+                    # Upload to brain
+                    result = await self.khoj.upload_document(
+                        file_path=target_path,
+                        content=content,
+                        filename=file_name,
+                        overwrite=False,
+                    )
+                    
+                    if result.get("status") == "uploaded":
+                        results.append({
+                            "path": result.get("path", target_path),
+                            "status": "uploaded",
+                            "chunks": result.get("chunks", 0),
+                        })
+                        self.logger.info(f"Uploaded {target_path} to brain")
+                    else:
+                        error = result.get("error", "Unknown error")
+                        results.append({
+                            "path": target_path,
+                            "status": "failed",
+                            "error": error,
+                        })
+                        self.logger.error(f"Upload failed for {target_path}: {error}")
+                        
+                except Exception as e:
+                    self.logger.error(f"Error uploading {file_name}: {e}", exc_info=True)
+                    results.append({
+                        "path": target_path,
+                        "status": "failed",
+                        "error": str(e),
+                    })
+            
+            # Update message with results
+            result_blocks = build_upload_result_blocks(results)
+            await client.chat_update(
+                channel=channel,
+                ts=progress_msg["ts"],
+                blocks=result_blocks,
+                text="Upload complete",
+            )
+
+        # ==================================================================
+        # Save Note to Brain Handlers
+        # ==================================================================
+
+        # Store pending note text (keyed by user_id)
+        self._pending_notes: Dict[str, str] = {}
+
+        @self.app.action("save_note_to_brain")
+        async def handle_save_note(ack, body, action, client):
+            """User clicked 'Save to Brain' for a note - show folder selection."""
+            await ack()
+            channel = body["channel"]["id"]
+            user_id = body["user"]["id"]
+
+            # Store the note text for this user
+            note_text = action.get("value", "")
+            if not note_text:
+                await client.chat_postMessage(
+                    channel=channel, text="⚠️ No text found to save."
+                )
+                return
+
+            self._pending_notes[user_id] = note_text
+
+            # Show folder selection
+            blocks = build_save_note_folder_blocks(COMMON_DIRECTORIES)
+            await client.chat_postMessage(
+                channel=channel,
+                blocks=blocks,
+                text="Select a folder to save note to",
+            )
+
+        @self.app.action("dismiss_save_note")
+        async def handle_dismiss_save_note(ack, body, client):
+            """User dismissed the save note prompt."""
+            await ack()
+            # No action needed - just dismiss
+
+        @self.app.action(re.compile(r"^save_note_dir_"))
+        async def handle_save_note_dir(ack, body, action, client):
+            """User selected a folder for saving the note."""
+            await ack()
+            channel = body["channel"]["id"]
+            user_id = body["user"]["id"]
+
+            dir_name = action["action_id"].replace("save_note_dir_", "")
+            note_text = self._pending_notes.pop(user_id, "")
+
+            if not note_text:
+                await client.chat_postMessage(
+                    channel=channel,
+                    text="⚠️ No pending note. Please try again.",
+                )
+                return
+
+            # Generate filename from date and first few words
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            # Create a slug from the first ~5 words
+            words = re.sub(r"[^a-z0-9\s]", "", note_text.lower()).split()[:5]
+            slug = "-".join(words) if words else "note"
+            filename = f"{date_str}-{slug}.md"
+            target_path = f"{dir_name}/{filename}"
+
+            try:
+                # Format as markdown note
+                md_content = f"# Note: {' '.join(words).title()}\n"
+                md_content += f"*Saved: {date_str}*\n\n"
+                md_content += note_text + "\n"
+
+                success = await self.brain.write_file(
+                    target_path, md_content, overwrite=False
+                )
+
+                if success:
+                    await client.chat_postMessage(
+                        channel=channel,
+                        text=f"✅ Saved to `{target_path}` in your brain.",
+                    )
+                    self.logger.info(f"Saved note to brain: {target_path}")
+                else:
+                    await client.chat_postMessage(
+                        channel=channel,
+                        text=f"⚠️ Could not save — file may already exist: `{target_path}`",
+                    )
+            except Exception as e:
+                self.logger.error(f"Error saving note: {e}", exc_info=True)
+                await client.chat_postMessage(
+                    channel=channel,
+                    text=f"⚠️ Error saving note: {str(e)}",
+                )
 
     async def _process_file_attachment(
         self, attachment: Dict, channel_id: str, user_id: str
@@ -651,19 +995,40 @@ You're not just answering questions—you're helping build and navigate a system
         # Load conversation history
         history = await self.conversations.load_conversation(user_id, thread_id)
 
-        # Check if summarization needed
+        # Check if summarization needed (lower threshold to reserve room for context injection)
         if (
             self.conversations.count_conversation_tokens(history)
-            > self.max_context_tokens
+            > self.summarization_threshold
         ):
             self.logger.info(
                 f"Summarizing conversation for {user_id} (thread {thread_id})"
             )
             history = await self.conversations.summarize_if_needed(
-                history, max_tokens=self.max_context_tokens
+                history, max_tokens=self.summarization_threshold
             )
 
-        # Search brain for context (if enabled)
+        # ---- NEW: Search past conversations for relevant context ----
+        past_context = ""
+        try:
+            past_convos = await self.conversations.search_past_conversations(
+                user_id=user_id,
+                query=user_message or text,
+                limit=2,
+                exclude_thread=thread_id,
+            )
+            if past_convos:
+                past_context = "\n\n**Relevant past conversations:**\n"
+                for convo in past_convos:
+                    ts = convo.get("timestamp", "recent")[:10]  # Just the date
+                    past_context += f"[{ts}] You said: {convo['user_message'][:150]}\n"
+                    past_context += f"I replied: {convo['assistant_message'][:150]}\n\n"
+                self.logger.info(
+                    f"Found {len(past_convos)} relevant past conversations"
+                )
+        except Exception as e:
+            self.logger.warning(f"Past conversation search failed: {e}")
+
+        # ---- Search brain for context (if enabled) ----
         # Skip Khoj search when files are attached - the file IS the context
         # Use original user message for Khoj search, not combined text with attachments
         context = ""
@@ -680,20 +1045,41 @@ You're not just answering questions—you're helping build and navigate a system
                 )
 
                 if search_results:
+                    # ---- NEW: Filter by relevance score ----
+                    filtered = []
+                    for result in search_results:
+                        score = getattr(result, "score", None)
+                        # Keep results with no score (backward compat) or high score
+                        if score is None or score >= self.min_relevance_score:
+                            filtered.append(result)
+
+                    # Keep at least one result if all were filtered out
+                    if not filtered and search_results:
+                        filtered = [search_results[0]]
+
+                    search_results = filtered
+
+                if search_results:
                     context = "\n\n**Relevant context from your brain:**\n"
                     for i, result in enumerate(search_results, 1):
                         # SearchResult is a dataclass with attributes, not a dict
                         snippet = result.entry[:200] if hasattr(result, "entry") else ""
                         file_name = result.file if hasattr(result, "file") else ""
-                        context += f"\n{i}. {snippet}...\n   (Source: {file_name})\n"
+                        score_str = ""
+                        if hasattr(result, "score") and result.score:
+                            score_str = f" [relevance: {result.score:.0%}]"
+                        context += f"\n{i}. {snippet}...\n   (Source: {file_name}{score_str})\n"
 
                     self.logger.info(
-                        f"Found {len(search_results)} relevant brain entries"
+                        f"Found {len(search_results)} relevant brain entries (after filtering)"
                     )
 
             except Exception as e:
                 self.logger.warning(f"Khoj search failed: {e}")
                 # Continue without context
+
+        # ---- Combine past conversations + brain context ----
+        full_context = past_context + context
 
         # Build prompt
         messages = []
@@ -707,8 +1093,8 @@ You're not just answering questions—you're helping build and navigate a system
 
         # Add current user message with optional context
         user_content = text
-        if context:
-            user_content = f"{context}\n\n**User message:** {text}"
+        if full_context:
+            user_content = f"{full_context}\n\n**User message:** {text}"
 
         messages.append(Message(role="user", content=user_content))
 
@@ -736,7 +1122,8 @@ You're not just answering questions—you're helping build and navigate a system
                 metadata={
                     "model": self.model,
                     "latency": latency,
-                    "context_used": bool(context),
+                    "context_used": bool(full_context),
+                    "past_convos_found": bool(past_context),
                 },
             )
         except Exception as e:
@@ -745,7 +1132,8 @@ You're not just answering questions—you're helping build and navigate a system
 
         self.logger.info(
             f"Generated response for {user_id} in {latency:.2f}s "
-            f"(history: {len(history)} msgs, context: {bool(context)})"
+            f"(history: {len(history)} msgs, context: {bool(full_context)}, "
+            f"past_convos: {bool(past_context)})"
         )
 
         # Record performance metrics
@@ -761,6 +1149,58 @@ You're not just answering questions—you're helping build and navigate a system
                 self.logger.warning(f"Failed to record performance metric: {e}")
 
         return response
+
+    @staticmethod
+    def _should_suggest_save(message: str) -> bool:
+        """Check if a message contains information worth saving to brain.
+
+        Detects patterns suggesting the user is sharing personal facts,
+        strategies, decisions, or preferences that would be valuable to
+        persist in the brain knowledge base.
+
+        Args:
+            message: The user's message text
+
+        Returns:
+            True if the message appears save-worthy
+        """
+        message_lower = message.lower()
+
+        # Security exclusions — never suggest saving secrets
+        security_words = ["password", "secret", "token", "credential", "api key", "api_key"]
+        if any(w in message_lower for w in security_words):
+            return False
+
+        # Must be substantial (not a short question)
+        if len(message) < 50:
+            return False
+
+        # Save-worthy patterns
+        patterns = [
+            "i use ",
+            "i prefer ",
+            "my strategy",
+            "my approach",
+            "my workflow",
+            "remember that",
+            "important:",
+            "note to self",
+            "i always ",
+            "i decided ",
+            "i chose ",
+            "my setup",
+            "my config",
+            "i currently ",
+            "for future reference",
+            "fyi ",
+            "my backup",
+            "my process",
+            "my system",
+            "my rule",
+            "going forward",
+        ]
+
+        return any(pattern in message_lower for pattern in patterns)
 
     async def run(self):
         """
@@ -833,12 +1273,12 @@ You're not just answering questions—you're helping build and navigate a system
             bot_name = auth_test.get("user", "Unknown")
             self.logger.info(f"✅ Slack auth OK (bot: {bot_name})")
         except SlackApiError as e:
-            # Log warning but don't fail - let Socket Mode handle it
-            self.logger.warning(f"⚠️ Slack auth test failed: {e} (will retry via Socket Mode)")
+            errors.append(f"Slack auth failed: {e}")
+            self.logger.error(f"❌ Slack auth failed: {e}")
 
         if errors:
-            # Log all errors but only fatal if Ollama is down
-            critical_errors = [e for e in errors if "Ollama" in e]
+            # Ollama and Slack are critical — fail startup if either is down
+            critical_errors = [e for e in errors if "Ollama" in e or "Slack" in e]
             if critical_errors:
                 raise RuntimeError(f"Health check failed: {'; '.join(critical_errors)}")
 

@@ -373,6 +373,78 @@ Concise summary:"""
             # Fallback: just keep recent messages
             return recent_messages
 
+    async def search_past_conversations(
+        self, user_id: str, query: str, limit: int = 2, exclude_thread: str = None
+    ) -> List[Dict]:
+        """
+        Search past conversations for relevant exchanges.
+
+        Performs simple keyword matching against stored JSON conversation files.
+        Returns the most relevant user/assistant exchange pairs.
+
+        Args:
+            user_id: Slack user ID
+            query: Search query
+            limit: Maximum number of exchange pairs to return
+            exclude_thread: Thread ID to exclude (current thread)
+
+        Returns:
+            List of dicts with keys: user_message, assistant_message, timestamp, thread_id
+        """
+        user_folder = self.users_folder / user_id / "conversations"
+
+        if not user_folder.exists():
+            return []
+
+        # Tokenize query into keywords (lowercase, min 3 chars)
+        query_words = [w.lower() for w in query.split() if len(w) >= 3]
+        if not query_words:
+            return []
+
+        scored_exchanges = []
+
+        for conv_file in user_folder.glob("*.json"):
+            try:
+                data = json.loads(conv_file.read_text())
+                thread_id = data.get("thread_id", "")
+
+                # Skip current thread
+                if exclude_thread and thread_id == exclude_thread:
+                    continue
+
+                messages = data.get("messages", [])
+
+                # Pair up user/assistant exchanges
+                for i in range(len(messages) - 1):
+                    if (
+                        messages[i].get("role") == "user"
+                        and messages[i + 1].get("role") == "assistant"
+                    ):
+                        user_msg = messages[i].get("content", "")
+                        asst_msg = messages[i + 1].get("content", "")
+                        combined = (user_msg + " " + asst_msg).lower()
+
+                        # Score: count matching query words
+                        score = sum(1 for w in query_words if w in combined)
+
+                        if score > 0:
+                            scored_exchanges.append(
+                                {
+                                    "user_message": user_msg[:200],
+                                    "assistant_message": asst_msg[:200],
+                                    "timestamp": messages[i].get("timestamp", ""),
+                                    "thread_id": thread_id,
+                                    "score": score,
+                                }
+                            )
+            except Exception as e:
+                logger.warning(f"Error searching conversation file {conv_file}: {e}")
+                continue
+
+        # Sort by score descending, take top N
+        scored_exchanges.sort(key=lambda x: x["score"], reverse=True)
+        return scored_exchanges[:limit]
+
     async def get_user_conversations(self, user_id: str) -> List[Dict]:
         """
         List all conversations for a user
