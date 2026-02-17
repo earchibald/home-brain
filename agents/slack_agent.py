@@ -645,9 +645,12 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
                 except Exception as e:
                     self.logger.warning(f"Failed to send working indicator: {e}")
 
+                # Extract message timestamp for temporal context
+                message_ts = event.get("ts", "")
+                
                 # Process message (this is slow - LLM inference)
                 response = await self._process_message(
-                    user_id, text, thread_ts, user_message=user_message, has_attachments=has_attachments
+                    user_id, text, thread_ts, user_message=user_message, has_attachments=has_attachments, message_ts=message_ts
                 )
 
                 # Delete working message if we successfully sent it
@@ -2008,7 +2011,7 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
             return f"*Could not process file {file_name}: {str(e)}*\n"
 
     async def _process_message(
-        self, user_id: str, text: str, thread_id: str, user_message: str = "", has_attachments: bool = False
+        self, user_id: str, text: str, thread_id: str, user_message: str = "", has_attachments: bool = False, message_ts: str = ""
     ) -> str:
         """
         Process incoming message and generate response
@@ -2019,6 +2022,7 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
             thread_id: Thread timestamp
             user_message: Original user message (without attachments), used for brain search
             has_attachments: Whether the message includes file attachments
+            message_ts: Slack message timestamp (for temporal context)
 
         Returns:
             Response text
@@ -2215,7 +2219,21 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
 
         # Inject action metadata so the LLM knows what actually happened
         # This prevents the LLM from claiming it searched when it didn't
+        # Also inject current time from message timestamp
+        from datetime import datetime
+        current_time_str = ""
+        if message_ts:
+            try:
+                # Slack timestamps are Unix epoch with microseconds (e.g., "1771347196.123456")
+                timestamp = float(message_ts)
+                dt = datetime.fromtimestamp(timestamp)
+                current_time_str = dt.strftime("%A, %B %d, %Y at %I:%M %p")
+            except (ValueError, OSError) as e:
+                self.logger.warning(f"Failed to parse message timestamp {message_ts}: {e}")
+        
         action_note = (
+            f"[Current time: {current_time_str}]\n" if current_time_str else ""
+        ) + (
             f"[Actions taken: brain_search={'yes' if context else 'no'}, "
             f"web_search={'yes' if web_context else 'no'}, "
             f"past_conversations={'yes' if past_context else 'no'}, "
