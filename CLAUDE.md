@@ -125,6 +125,9 @@ Slack apps are managed via manifests checked into `manifests/` directory.
 - `/brain` - Query the knowledge base
 - `/model` - Switch between LLM providers (Ollama, Gemini)
 - `/apikey` - Manage Gemini API keys (add/view/delete)
+- `/tools` - View/enable/disable tools with Block Kit toggles
+- `/facts` - View/add/edit/delete personal facts with overflow menus
+- `/mission` - View current mission principles
 
 ```bash
 # Export live app config
@@ -231,11 +234,11 @@ python -m pytest tests/ --cov --cov-report=html
 open htmlcov/index.html
 ```
 
-### Current Status (2026-02-14, feature integration complete)
-- ✅ **67 GREEN tests PASSING** - All core features + RED tests converted to GREEN
-- ✅ **18 RED tests → GREEN** - File attachments (8), streaming (6), performance (4)
-- ✅ **Features integrated into slack_agent.py** - Ready for NUC-2 deployment
-- ❌ **2 edge case failures** - Health check edge cases (not from RED tests)
+### Current Status (Phase 1a+1b complete)
+- ✅ **367 GREEN tests PASSING** — 209 baseline + 158 new tool architecture tests
+- ✅ **Tool architecture deployed** — 3 tools registered, mission principles loaded
+- ✅ **All slash commands wired** — /tools, /facts, /mission with Block Kit UIs
+- ✅ **Committed** — `101d8b7`, deployed to NUC-2, health checks green
 
 ### Features Implemented via TDD
 
@@ -280,7 +283,22 @@ slack_bot/
   ├── slack_message_updater.py - Incremental message updates
   ├── ollama_client.py - Streaming LLM client
   ├── performance_monitor.py - Latency tracking
-  └── alerting.py - Alert notifications
+  ├── alerting.py - Alert notifications
+  ├── mission_manager.py - Hot-reload operator instructions from ~/.brain-mission.md
+  ├── tools_ui.py - Block Kit UI for /tools command
+  ├── facts_ui.py - Block Kit UI for /facts command
+  └── tools/
+      ├── __init__.py
+      ├── base_tool.py - BaseTool ABC, ToolResult, UserScopedTool
+      ├── tool_registry.py - ToolRegistry (register/enable/disable/list)
+      ├── tool_executor.py - XML shim parsing, timeout guard, tool loop
+      ├── tool_state.py - Per-user enable/disable state (JSON, 0600)
+      ├── builtin/
+      │   ├── web_search_tool.py - WebSearchTool wrapping WebSearchClient
+      │   ├── brain_search_tool.py - BrainSearchTool wrapping SemanticSearchClient
+      │   └── facts_tool.py - FactsStore + FactsTool (per-user memory)
+      └── mcp/
+          └── mcp_config.py - MCP server config (base + local merge)
 ```
 
 ---
@@ -293,6 +311,7 @@ slack_bot/
 - **2026-02-16 Session D:** Built Slack-as-user testing tools (SlackUserClient, slack-as-me CLI, manifest manager)
 - **2026-02-16 Session E:** Fixed all 4 failing health check tests — 174/174 tests GREEN ✅
 - **2026-02-16 Session F:** Integrated Google Gemini provider with dynamic API key management, quota handling, `/apikey` Slack command, automatic Ollama fallback
+- **Phase 1a+1b:** Built pluggable tool architecture (BaseTool, ToolRegistry, ToolExecutor, ToolStateStore), FACTS per-user memory, MissionManager hot-reload, 3 built-in tools (web_search, brain_search, facts), `/tools`+`/facts`+`/mission` Slack slash commands, 158 new tests (367 total, 0 failures), committed `101d8b7`, deployed to NUC-2
 
 ---
 

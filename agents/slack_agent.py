@@ -93,7 +93,9 @@ from slack_bot.tools.builtin.facts_tool import (
     FactsStore,
     message_references_personal_context,
 )
+from slack_bot.tools.builtin.facts_check_skill import FactsCheckSkill
 from slack_bot.mission_manager import MissionManager
+from slack_bot.tools.mcp.mcp_manager import MCPManager
 from slack_bot.tools_ui import build_tools_ui, parse_tool_toggle_action
 from slack_bot.facts_ui import build_facts_ui, build_fact_edit_view
 
@@ -327,8 +329,23 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
         self.tool_registry.register(BrainSearchTool(self.search, self.min_relevance_score))
         self.tool_registry.register(FactsTool())
 
+        # Register skills (hidden from /tools UI, LLM-callable)
+        self.tool_registry.register(FactsCheckSkill())
+
         # Mission principles (hot-reloads from ~/.brain-mission.md)
         self.mission_manager = MissionManager()
+
+        # MCP servers (Phase 5 — stdio transport, Phase 6 — SSE transport)
+        self.mcp_manager = MCPManager(
+            registry=self.tool_registry,
+            config_path=config.get("mcp_config_path", "config/mcp_servers.json"),
+        )
+
+        # Agent hooks (Phase 7) — pre/post processing extensibility
+        self.agent_hooks = {
+            "pre_process": [],    # async (event: dict, agent: SlackAgent) → None
+            "post_process": [],   # async (response: str, event: dict, agent: SlackAgent) → str|None
+        }
 
         # Feature flags
         self.enable_file_attachments = config.get("enable_file_attachments", True)
@@ -446,6 +463,50 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
         except Exception as e:
             self.logger.error(f"Ollama generation failed: {e}")
             raise
+
+    def register_hook(self, hook_type: str, fn) -> None:
+        """Register an agent hook function.
+
+        Args:
+            hook_type: "pre_process" or "post_process"
+            fn: Async callable. pre_process receives (event, agent).
+                post_process receives (response, event, agent) and may return
+                a modified response string (or None to keep original).
+
+        Raises:
+            ValueError: If hook_type is invalid
+        """
+        if hook_type not in self.agent_hooks:
+            raise ValueError(f"Invalid hook type: {hook_type}. Must be one of {list(self.agent_hooks.keys())}")
+        self.agent_hooks[hook_type].append(fn)
+        self.logger.info(f"Registered {hook_type} hook: {getattr(fn, '__name__', str(fn))}")
+
+    async def _run_pre_process_hooks(self, event: dict) -> None:
+        """Run all pre_process hooks. Errors are logged, never surfaced."""
+        for hook in self.agent_hooks.get("pre_process", []):
+            try:
+                await hook(event, self)
+            except Exception as e:
+                self.logger.error(f"Pre-process hook error ({getattr(hook, '__name__', '?')}): {e}")
+
+    async def _run_post_process_hooks(self, response: str, event: dict) -> str:
+        """Run all post_process hooks. Hooks may return modified response.
+
+        Args:
+            response: Generated response text
+            event: Original event dict
+
+        Returns:
+            Possibly modified response text
+        """
+        for hook in self.agent_hooks.get("post_process", []):
+            try:
+                result = await hook(response, event, self)
+                if result is not None and isinstance(result, str):
+                    response = result
+            except Exception as e:
+                self.logger.error(f"Post-process hook error ({getattr(hook, '__name__', '?')}): {e}")
+        return response
 
     def _register_handlers(self):
         """Register Slack event handlers"""
@@ -1957,6 +2018,16 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
         """
         start_time = datetime.now()
 
+        # Run pre-process hooks (Phase 7)
+        hook_event = {
+            "user_id": user_id,
+            "text": text,
+            "thread_id": thread_id,
+            "user_message": user_message,
+            "has_attachments": has_attachments,
+        }
+        await self._run_pre_process_hooks(hook_event)
+
         # Load conversation history
         history = await self.conversations.load_conversation(user_id, thread_id)
 
@@ -2207,6 +2278,9 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
             except Exception as e:
                 self.logger.warning(f"Failed to record performance metric: {e}")
 
+        # Run post-process hooks (Phase 7) — may modify response
+        response = await self._run_post_process_hooks(response, hook_event)
+
         return response
 
     def _should_web_search(self, query: str) -> tuple[bool, str]:
@@ -2397,6 +2471,12 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
             # Health check
             await self._health_check()
 
+            # Start MCP servers (non-critical — failures logged but don't block)
+            try:
+                await self.mcp_manager.startup()
+            except Exception as e:
+                self.logger.warning(f"⚠️ MCP startup failed (non-critical): {e}")
+
             # Start Socket Mode handler
             self.socket_handler = AsyncSocketModeHandler(self.app, self.app_token)
 
@@ -2408,6 +2488,7 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
 
         except KeyboardInterrupt:
             self.logger.info("Received shutdown signal")
+            await self.mcp_manager.shutdown()
             await self.notify("Slack Bot", "Slack agent shutting down")
 
         except Exception as e:
@@ -2484,6 +2565,14 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
             self.logger.info(f"✅ Mission principles OK ({len(mission)} chars)")
         except Exception as e:
             self.logger.warning(f"⚠️ Mission principles unavailable: {e}")
+
+        # Check MCP config (non-critical, just report)
+        try:
+            mcp_status = self.mcp_manager.get_server_status()
+            enabled_count = sum(1 for s in mcp_status.values() if s["enabled"])
+            self.logger.info(f"✅ MCP config OK ({len(mcp_status)} servers, {enabled_count} enabled)")
+        except Exception as e:
+            self.logger.warning(f"⚠️ MCP config check failed: {e}")
 
         if errors:
             # Ollama and Slack are critical — fail startup if either is down

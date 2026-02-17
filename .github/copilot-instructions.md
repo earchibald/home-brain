@@ -10,6 +10,15 @@ This is a Python Slack bot that integrates with a ChromaDB semantic search servi
 agents/           - Main agent implementations (slack_agent.py is the primary bot)
 clients/          - Service clients (SemanticSearch, Ollama, BrainIO, ConversationManager)
 slack_bot/        - Feature modules (file handling, streaming, performance monitoring)
+  tools/          - Tool architecture (BaseTool, registry, executor)
+    builtin/      - Built-in tools (web_search, brain_search, facts)
+    mcp/          - MCP server config and integration stubs
+  mission_manager.py - Hot-reload operator instructions from ~/.brain-mission.md
+  tools_ui.py     - Block Kit UI for /tools command
+  facts_ui.py     - Block Kit UI for /facts command
+config/           - Configuration files (mcp_servers.json)
+providers/        - LLM provider adapters (Gemini, etc.)
+services/         - Service layer (model_manager, etc.)
 tests/            - Pytest test suite
   unit/           - Fast unit tests (no external deps)
   integration/    - Integration tests (mocked externals)
@@ -27,6 +36,18 @@ tests/            - Pytest test suite
 - `providers/gemini_adapter.py` - Gemini provider with quota handling
 - `slack_bot/file_handler.py` - File download and text extraction
 - `slack_bot/performance_monitor.py` - Latency tracking and alerting
+- `slack_bot/tools/base_tool.py` - BaseTool ABC, ToolResult, UserScopedTool
+- `slack_bot/tools/tool_registry.py` - ToolRegistry (register/enable/disable/list)
+- `slack_bot/tools/tool_executor.py` - Shim XML parsing, timeout guard, tool loop
+- `slack_bot/tools/tool_state.py` - ToolStateStore (per-user JSON, 0600 perms)
+- `slack_bot/tools/builtin/facts_tool.py` - FactsStore + FactsTool (per-user memory)
+- `slack_bot/tools/builtin/web_search_tool.py` - WebSearchTool wrapping WebSearchClient
+- `slack_bot/tools/builtin/brain_search_tool.py` - BrainSearchTool wrapping SemanticSearchClient
+- `slack_bot/tools/mcp/mcp_config.py` - MCP server config loader (base + local merge)
+- `slack_bot/mission_manager.py` - Hot-reload mission principles from ~/.brain-mission.md
+- `slack_bot/tools_ui.py` - Block Kit UI for /tools command
+- `slack_bot/facts_ui.py` - Block Kit UI for /facts command
+- `config/mcp_servers.json` - MCP server definitions (GitHub, filesystem)
 - `conftest.py` - Root path setup
 - `tests/conftest.py` - All test fixtures
 
@@ -57,6 +78,45 @@ python -m pytest tests/ -v
 ## Gemini Integration & API Key Management
 
 Brain Assistant supports Google Gemini as an alternative to Ollama for LLM inference.
+
+## Tool Architecture (Phase 1a+1b)
+
+The bot uses a pluggable tool system with two modes:
+- **Ollama mode**: Eager injection — tools run before LLM call, results injected into context (zero regression from baseline)
+- **Gemini mode**: Full tool loop — native function-calling with up to 5 rounds
+
+### Core Components
+- `BaseTool(ABC)` — Common interface with `execute()`, `to_function_spec()`, `to_prompt_description()`
+- `UserScopedTool(BaseTool)` — Tools that need per-user state (e.g., FACTS)
+- `ToolRegistry` — Register/enable/disable tools, follows `model_manager.py` pattern
+- `ToolExecutor` — Parses `<tool_call>` XML shim, 15s timeout guard, MAX_TOOL_ROUNDS=5
+- `ToolStateStore` — Per-user enable/disable state in `~/.brain-tool-state.json` (0600)
+
+### Built-in Tools
+- `web_search` — DuckDuckGo search via WebSearchClient
+- `brain_search` — ChromaDB semantic search via SemanticSearchClient
+- `facts` — Per-user persistent memory (store/get/list/delete) via FactsStore
+
+### FACTS System
+- Per-user JSON storage: `~/.brain-facts-{user_id}.json` (0600 perms)
+- Selective injection: only when message references personal context (pronouns + category keywords)
+- Categories: personal, preferences, health, work, family, goals, context, other
+- Conflict detection on store (warns about existing facts in same category)
+
+### Mission Principles
+- Hot-reload from `~/.brain-mission.md` on NUC-2
+- Injected into every system prompt as "## Operator Instructions"
+- Editable by operator without restart
+
+### MCP (Model Context Protocol) Config
+- Base config: `config/mcp_servers.json` (tracked)
+- Local override: `config/mcp_servers.local.json` (gitignored)
+- Merge strategy: local overrides base at startup
+
+### Slash Commands
+- `/tools` — View/enable/disable tools with Block Kit toggles
+- `/facts` — View/add/edit/delete personal facts with overflow menus
+- `/mission` — View current mission principles
 
 ### Overview
 - Per-user API keys stored in `~/.brain-api-keys.json` on NUC-2 (0600 permissions)
