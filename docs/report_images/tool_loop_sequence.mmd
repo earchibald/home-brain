@@ -1,13 +1,13 @@
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90d9', 'primaryTextColor': '#fff', 'lineColor': '#5a6f85'}}}%%
 sequenceDiagram
-    participant User as User
-    participant Agent as SlackAgent
-    participant Hooks as Hooks
-    participant LLM as LLM
-    participant Tools as ToolExecutor
-    participant Brain as ChromaDB/Web
+    participant User as 👤 User
+    participant Agent as 🤖 SlackAgent
+    participant Hooks as ⚡ Hooks
+    participant LLM as 🧠 LLM
+    participant Tools as 🛠️ ToolExecutor
+    participant Brain as 📚 ChromaDB/Web
 
-    User->>Agent: Message received
+    User->>Agent: "Find React hooks info"
     Agent->>Hooks: Pre-process: intent_classifier_hook()
     Hooks-->>Agent: Intent: RESEARCH
     
@@ -24,4 +24,7 @@ sequenceDiagram
     LLM-->>Agent: Final answer text
     
     Agent->>Hooks: Post-process: citation_hook()
-    Hooks->>Hooks: Format    Hooks->>Hooks: Format    Hooks->>Hooks: Format    Hooks->>Hooks: Format    Hooks->>Hooksesponse with citations
+    Hooks->>Hooks: Format citations from tracker
+    Hooks-->>Agent: Enhanced response
+    
+    Agent->>User: Final response with citations
