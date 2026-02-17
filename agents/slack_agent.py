@@ -1253,10 +1253,11 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
                         "text": {
                             "type": "mrkdwn",
                             "text": (
-                                "⚠️ *Warning: This will delete ALL conversation history in this DM.*\n\n"
+                                "⚠️ *Warning: This will delete ALL conversation history and FACTS in this DM.*\n\n"
                                 "This includes:\n"
                                 "• All past messages and responses\n"
                                 "• Conversation context and memory\n"
+                                "• All stored FACTS (personal details, preferences, etc.)\n"
                                 "• Any ongoing discussion threads\n\n"
                                 "*This action CANNOT be undone.*"
                             ),
@@ -1301,6 +1302,7 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
                                 "🚨 *Are you absolutely sure?*\n\n"
                                 "Once deleted, you will lose:\n"
                                 "• All context about previous conversations\n"
+                                "• All stored FACTS and preferences\n"
                                 "• Any information I've learned about you\n"
                                 "• The ability to reference past discussions\n\n"
                                 "The conversation will restart from scratch.\n\n"
@@ -1348,6 +1350,7 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
                                 "🚨 *LAST CHANCE TO CANCEL*\n\n"
                                 "This is your final warning. Clicking 'DELETE' below will:\n\n"
                                 "❌ Permanently erase all conversation history\n"
+                                "❌ Delete all stored FACTS\n"
                                 "❌ Remove all context and memory\n"
                                 "❌ Cannot be recovered or undone\n\n"
                                 "**This is irreversible.**\n\n"
@@ -1388,16 +1391,21 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
                 # Delete the conversation
                 deleted = await self.conversations.delete_conversation(user_id, channel_id)
 
-                if deleted:
+                # Delete all FACTS for this user
+                facts_store = FactsStore(user_id)
+                facts_deleted = facts_store.clear_all()
+
+                if deleted or facts_deleted > 0:
+                    facts_msg = f" and {facts_deleted} FACTS" if facts_deleted > 0 else ""
                     await respond(
-                        text="✅ *Conversation history deleted*",
+                        text="✅ *Memory cleared*",
                         blocks=[
                             {
                                 "type": "section",
                                 "text": {
                                     "type": "mrkdwn",
                                     "text": (
-                                        "✅ **Conversation history has been deleted.**\n\n"
+                                        f"✅ **Conversation history{facts_msg} have been deleted.**\n\n"
                                         "All memory and context has been cleared.\n"
                                         "Our next conversation will start fresh.\n\n"
                                         "_You can continue chatting normally now._"
@@ -1408,10 +1416,10 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
                         response_type="ephemeral",
                         replace_original=True,
                     )
-                    self.logger.info(f"User {user_id} deleted conversation in {channel_id}")
+                    self.logger.info(f"User {user_id} deleted conversation and {facts_deleted} facts in {channel_id}")
                 else:
                     await respond(
-                        text="ℹ️ No conversation history found to delete.",
+                        text="ℹ️ No conversation history or FACTS found to delete.",
                         response_type="ephemeral",
                         replace_original=True,
                     )

@@ -168,6 +168,19 @@ class FactsStore:
             return True
         return False
 
+    def clear_all(self) -> int:
+        """Delete all facts for this user.
+
+        Returns:
+            Number of facts that were deleted
+        """
+        data = self._load()
+        count = len(data)
+        if count > 0:
+            self._save({})
+            logger.info(f"FACTS: Cleared all {count} facts for user {self.user_id}")
+        return count
+
     def get_context_for_injection(self, limit: int = 20) -> str:
         """Format stored facts as context string for system prompt injection.
 
