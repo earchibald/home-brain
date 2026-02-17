@@ -1,27 +1,27 @@
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90d9', 'primaryTextColor': '#fff', 'lineColor': '#5a6f85'}}}%%
 sequenceDiagram
-    participant User as 👤 User
-    participant Agent as 🤖 SlackAgent
-    participant LLM as 🧠 LLM (Ollama/Gemini)
-    participant Tools as 🛠️ ToolExecutor
-    participant Brain as 📚 Brain/Web
+    participant User as User
+    participant Agent as SlackAgent
+    participant Hooks as Hooks
+    participant LLM as LLM
+    participant Tools as ToolExecutor
+    participant Brain as ChromaDB/Web
 
-    User->>Agent: "Find strict React hooks"
-    Agent->>Agent: intent_classifier_hook()
-    Note right of Agent: Intent: RESEARCH
+    User->>Agent: Message received
+    Agent->>Hooks: Pre-process: intent_classifier_hook()
+    Hooks-->>Agent: Intent: RESEARCH
     
-    Agent->>LLM: Generate response (with tools)
-    LLM->>Agent: <tool_code>web_search("React hooks strict mode")</tool_code>
+    Agent->>LLM: Generate (tools available)
+    LLM-->>Agent: tool_use: web_search("React hooks")
     
-    Agent->>Tools: execute("web_search", ...)
-    Tools->>Brain: Fetch duckduckgo results
-    Brain->>Tools: Returns snippets & URLs
-    Tools->>Agent: ToolResult(output="...", sensitive=False)
+    Agent->>Tools: Execute tool
+    Tools->>Brain: Fetch results
+    Brain-->>Tools: Snippets + URLs
+    Tools->>Tools: Record sources to tracker
+    Tools-->>Agent: ToolResult
     
-    Agent->>LLM: Tool Result Context + Original Question
-    LLM->>Agent: Final Answer: "According to the docs..."
+    Agent->>LLM: Tool context + original question
+    LLM-->>Agent: Final answer text
     
-    Agent->>Agent: citation_hook()
-    Note right of Agent: Appends: 🌐 React Docs
-    
-    Agent->>User: Final Response
+    Agent->>Hooks: Post-process: citation_hook()
+    Hooks->>Hooks: Format    Hooks->>Hooks: Format    Hooks->>Hooks: Format    Hooks->>Hooks: Format    Hooks->>Hooksesponse with citations

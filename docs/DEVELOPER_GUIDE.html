@@ -42,27 +42,98 @@
     <h2>1. System Architecture</h2>
     
     <h3>The "Mesh" (Physical & Logical)</h3>
-    <p>The system is distributed across four physical nodes:</p>
+    <p>The system is distributed across four physical nodes in a fault-tolerant mesh architecture:</p>
+    
+    <h3>🖥️ NUC-1: Orchestrator & Knowledge Hub</h3>
+    <p><strong>Role:</strong> Central orchestration, semantic search, secret management.</p>
     <ul>
-        <li><strong>NUC-1:</strong> Orchestrator, ChromaDB (Vector DB), Vaultwarden (Secrets).</li>
-        <li><strong>NUC-2:</strong> Agent Host (Slack Bot Service).</li>
-        <li><strong>NUC-3:</strong> Storage (Backups, Large Files).</li>
-        <li><strong>Mac Mini:</strong> Inference (Ollama/Llama 3.2).</li>
+        <li><strong>ChromaDB (Vector Database):</strong> Semantic search index over your brain notes. All `/brain_search` queries hit this service.</li>
+        <li><strong>Vaultwarden (Secrets Manager):</strong> Encrypted storage for API keys, tokens, and credentials. Never stored in plaintext.</li>
+        <li><strong>Syncthing (Introducer):</strong> Coordinates file sync between NUC-2, NUC-3, and NUC-1.</li>
+        <li><strong>Docker Stack:</strong> Runs Khoj (or replacement) service for indexed content.</li>
+        <li><strong>Key Endpoint:</strong> <code>http://nuc-1.local:42110/api/search</code> for brain content retrieval.</li>
     </ul>
+    <p><strong>For Developers:</strong> When working with `/brain_search`, understand that NUC-1 is the latency bottleneck. ChromaDB query performance directly affects user experience.</p>
 
-    <h3>The Tool Loop Sequence</h3>
-    <p>Understanding how the Agent thinks is critical for extending it.</p>
+    <h3>🖥️ NUC-2: Agent Host (Slack Bot Service)</h3>
+    <p><strong>Role:</strong> The active brain—runs the Slack bot and coordinates all tool execution.</p>
+    <ul>
+        <li><strong>SlackAgent Service:</strong> The main Python process running in `systemd` as <code>brain-slack-bot</code>.</li>
+        <li><strong>Python Environment:</strong> Virtual environment at <code>~/agents/venv</code>.</li>
+        <li><strong>Tool Execution Engine:</strong> All tool invocations (brain_search, web_search, facts) run here.</li>
+        <li><strong>Syncthing Sync:</strong> Keeps <code>/home/earchibald/brain</code> in sync with NUC-1 and NUC-3.</li>
+        <li><strong>Logs:</strong> <code>journalctl -u brain-slack-bot -f</code> for live debugging.</li>
+    </ul>
+    <p><strong>For Developers:</strong> NUC-2 is where you deploy your changes. All testing should happen here before production rollout.</p>
+
+    <h3>🖥️ NUC-3: Storage Hub & Backup</h3>
+    <p><strong>Role:</strong> Persistent file storage, backups, and off-site replication.</p>
+    <ul>
+        <li><strong>NAS Storage:</strong> Syncthing target for brain folder backups.</li>
+        <li><strong>Restic Backups:</strong> Local encrypted backups to external drive and pCloud via rclone.</li>
+        <li><strong>Docker Syncthing:</strong> Runs Syncthing in a container with stable configuration.</li>
+        <li><strong>Backup Scripts:</strong> Automated daily backup via <code>backup_brain.sh</code> (3 AM) and <code>sync_to_pcloud.sh</code> (3:30 AM).</li>
+        <li><strong>Cron Jobs:</strong> Monitoring and health checks for backup integrity.</li>
+    </ul>
+    <p><strong>For Developers:</strong> NUC-3 failure affects backups, not live operations. NUC-1 and NUC-2 can run independently.</p>
+
+    <h3>💻 Mac Mini: Inference Engine</h3>
+    <p><strong>Role:</strong> Local LLM inference for privacy and speed.</p>
+    <ul>
+        <li><strong>Ollama Service:</strong> Runs LLM models locally at <code>http://m1-mini.local:11434</code>.</li>
+        <li><strong>Models Loaded:</strong>
+            <ul>
+                <li><code>llama3.2</code> (Active) - Fast, 8B parameters, good context understanding.</li>
+                <li><code>nomic-embed-text</code> (Embedding) - For semantic search vector generation.</li>
+            </ul>
+        </li>
+        <li><strong>100% Private:</strong> All inference stays on your network. No external API calls for Ollama mode.</li>
+        <li><strong>Environment:</strong> <code>OLLAMA_HOST=0.0.0.0</code> enables network access from NUCs.</li>
+    </ul>
+    <p><strong>For Developers:</strong> If inference is slow, check Mac Mini CPU load. Ollama will queue requests if overloaded.</p>
+
+    <h3>The Request Flow (How Every Message Gets Processed)</h3>
+    <p>Understanding the complete request lifecycle is critical for debugging and extending the agent.</p>
     <div class="img-container">
         <img src="report_images/tool_loop_sequence.png" alt="Tool Loop Sequence Diagram">
     </div>
 
+    <ol>
+        <li><strong>Intent Classification:</strong> Pre-process hook (<code>hooks/intent_classifier.py</code>) analyzes the message to classify intent (RESEARCH, KNOWLEDGE, PERSONAL, etc.).</li>
+        <li><strong>LLM Prompt Generation:</strong> SlackAgent constructs the prompt with tools available based on intent classification.</li>
+        <li><strong>Tool Execution:</strong> ToolExecutor (<code>tools/tool_executor.py</code>) parses LLM output and executes selected tools safely with timeouts.</li>
+        <li><strong>Source Tracking:</strong> Each tool records its sources. SourceTracker (<code>hooks/source_tracker.py</code>) maintains context-local tracking.</li>
+        <li><strong>Citation Generation:</strong> Post-process hook (<code>hooks/citation_hook.py</code>) formats citations and appends them to the response.</li>
+    </ol>
+
+    <p><strong>Key Implementation Files:</strong></p>
     <ul>
-        <li><strong>Intent Classification:</strong> <span class="badge">hooks/intent_classifier.py</span> Pre-processes messages to determine context.</li>
-        <li><strong>Tool Execution:</strong> <span class="badge">tools/tool_executor.py</span> Parses LLM output and executes Python functions safely.</li>
-        <li><strong>Source Tracking:</strong> <span class="badge">hooks/source_tracker.py</span> Records every tool usage to generate citations later.</li>
+        <li><code>agents/slack_agent.py</code> - Main orchestrator. Entry point for all logic.</li>
+        <li><code>slack_bot/hooks/</code> - Pre and post-processing hooks for extensibility.</li>
+        <li><code>slack_bot/tools/tool_executor.py</code> - Safe, isolated execution environment with 15-second timeout.</li>
+        <li><code>slack_bot/tools/builtin/</code> - Built-in tools: brain_search, web_search, facts.</li>
     </ul>
 
-    <h2>2. Development Workflow ("The Flow")</h2>
+    <h2>2. Hardware & Network Prerequisites</h2>
+    
+    <h3>Network Topology</h3>
+    <ul>
+        <li>All NUCs and Mac Mini are on the same local network (192.168.x.x).</li>
+        <li>Service discovery via mDNS: <code>nuc-1.local</code>, <code>nuc-2.local</code>, <code>nuc-3.local</code>, <code>m1-mini.local</code>.</li>
+        <li>SSH passwordless access configured for <code>earchibald@</code> user on all hosts.</li>
+        <li>Syncthing mesh keeps all three NUCs in continuous sync.</li>
+    </ul>
+
+    <h3>Service Dependencies</h3>
+    <p>Before extending the system, understand the dependency chain:</p>
+    <pre><code>SlackAgent (NUC-2)
+    ├─ Ollama (Mac Mini) - For inference
+    ├─ ChromaDB (NUC-1) - For semantic search
+    ├─ Vaultwarden (NUC-1) - For secrets
+    └─ Syncthing (All) - For file sync</code></pre>
+    <p>If any dependency is down, the bot degrades gracefully (falls back to chat-only mode).</p>
+
+    <h2>3. Development Workflow ("The Flow")</h2>
     <div class="callout">
         <strong>Core Philosophy:</strong> Test First. Deploy Safer.
     </div>
@@ -82,11 +153,17 @@ pip install -r requirements-dev.txt
         <li><strong>Refactor:</strong> Move the test to <code>tests/unit/</code> or <code>tests/integration/</code>.</li>
     </ol>
 
-    <h3>Running Locally</h3>
-    <p>Use the master script to run the agent locally with mocked Slack events:</p>
-    <pre><code>./run_agent.sh --local</code></pre>
+    <h3>Running Locally (Mac Mini or NUC-2)</h3>
+    <p>For local testing without Slack integration:</p>
+    <pre><code>./run_agent.sh --local --debug</code></pre>
+    <p>This mocks Slack events and lets you test the full request flow without restarting the service.</p>
+    <p><strong>For remote testing on NUC-2:</strong></p>
+    <pre><code>ssh nuc-2.local
+cd /home/earchibald/agents
+./run_agent.sh --test
+journalctl -u brain-slack-bot -f  # Watch live logs</code></pre>
 
-    <h2>3. Working with Agents ("AI Building AI")</h2>
+    <h2>4. Working with Agents ("AI Building AI")</h2>
     
     <h3>Agent Tools</h3>
     <p>The repository includes specialized agents to help <em>you</em> code:</p>
@@ -103,7 +180,7 @@ pip install -r requirements-dev.txt
         <li><strong>Schema Definition:</strong> "Ensure the tool schema matches the `get_tool_spec()` format."</li>
     </ol>
 
-    <h2>4. Extension Guide</h2>
+    <h2>5. Extension Guide</h2>
 
     <h3>Adding a New Tool</h3>
     <p>Extending the bot's capabilities is straightforward:</p>
@@ -121,7 +198,7 @@ pip install -r requirements-dev.txt
         <li>Update the UI definitions in <code>slack_bot/facts_ui.py</code>.</li>
     </ul>
 
-    <h2>5. Deployment Pipeline</h2>
+    <h2>6. Deployment Pipeline</h2>
     
     <div class="img-container">
         <img src="report_images/deployment_pipeline.png" alt="Deployment Pipeline Diagram">
