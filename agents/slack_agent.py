@@ -170,6 +170,62 @@ class ApiKeyStore:
         return f"{api_key[:4]}...{api_key[-4:]}"
 
 
+class ModelPreferenceStore:
+    """
+    Persistent storage for user model/provider preferences.
+    
+    Stores preferences in a JSON file with restricted permissions.
+    Preferences are stored per-user (Slack user ID).
+    """
+    
+    def __init__(self, storage_path: str = None):
+        self.storage_path = storage_path or os.path.expanduser("~/.brain-model-prefs.json")
+        self._ensure_file()
+    
+    def _ensure_file(self):
+        """Create storage file with secure permissions if it doesn't exist."""
+        import json
+        if not os.path.exists(self.storage_path):
+            with open(self.storage_path, 'w') as f:
+                json.dump({}, f)
+            os.chmod(self.storage_path, 0o600)
+    
+    def _load(self) -> dict:
+        import json
+        try:
+            with open(self.storage_path, 'r') as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    
+    def _save(self, data: dict):
+        import json
+        with open(self.storage_path, 'w') as f:
+            json.dump(data, f, indent=2)
+        os.chmod(self.storage_path, 0o600)
+    
+    def set_preference(self, user_id: str, provider_id: str, model_name: str):
+        """Store model preference for a user."""
+        data = self._load()
+        data[user_id] = {
+            "provider_id": provider_id,
+            "model_name": model_name
+        }
+        self._save(data)
+    
+    def get_preference(self, user_id: str) -> dict:
+        """Get model preference for a user. Returns None if not set."""
+        data = self._load()
+        return data.get(user_id)
+    
+    def clear_preference(self, user_id: str):
+        """Clear model preference for a user."""
+        data = self._load()
+        if user_id in data:
+            del data[user_id]
+            self._save(data)
+
+
 class SlackAgent(Agent):
     """Slack conversation bot with brain context and multi-turn memory"""
 
@@ -321,6 +377,9 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
         
         # API key store for user-provided keys (Gemini, etc.)
         self.api_key_store = ApiKeyStore()
+        
+        # Model preference store for persistent model selections
+        self.model_pref_store = ModelPreferenceStore()
 
         # ---- Tool architecture (Phase 1a/1b) ----
         self.tool_state_store = ToolStateStore()
@@ -405,6 +464,24 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
         Returns:
             tuple of (response_text, model_used, quota_exhausted)
         """
+        # Load user's saved model preference (if any)
+        if self.enable_model_switching:
+            saved_pref = self.model_pref_store.get_preference(user_id)
+            if saved_pref:
+                try:
+                    self.model_manager.set_model(
+                        saved_pref["provider_id"],
+                        saved_pref["model_name"]
+                    )
+                    self.logger.debug(
+                        f"Loaded model preference for {user_id}: "
+                        f"{saved_pref['provider_id']} / {saved_pref['model_name']}"
+                    )
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to load saved preference for {user_id}: {e}"
+                    )
+        
         # Check if user has a Gemini key and Gemini is selected
         gemini_key = self.api_key_store.get_key(user_id, "gemini")
         config = self.model_manager.get_current_config() if self.enable_model_switching else {}
@@ -797,7 +874,7 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
                 )
 
         @self.app.action("select_model")
-        async def handle_model_selection(ack, action, respond):
+        async def handle_model_selection(ack, body, action, respond):
             """Handle model selection from dropdown"""
             await ack()
 
@@ -808,20 +885,29 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
                 # Parse selection value (format: "provider_id:model_name")
                 selected_value = action["selected_option"]["value"]
                 provider_id, model_name = selected_value.split(":", 1)
+                
+                # Get user ID for preference storage
+                user_id = body["user"]["id"]
 
                 # Apply selection
                 result = apply_model_selection(self.model_manager, provider_id, model_name)
 
                 if result["success"]:
+                    # Save user preference for persistence across restarts
+                    self.model_pref_store.set_preference(user_id, provider_id, model_name)
+                    self.logger.info(
+                        f"Model switched to {provider_id}:{model_name} for user {user_id} "
+                        f"(saved to preferences)"
+                    )
+                    
                     # Get provider name for clearer message
                     provider_name = self.model_manager.providers.get(provider_id, {}).name if hasattr(self.model_manager.providers.get(provider_id), 'name') else provider_id
 
                     await respond(
-                        text=f"✅ **Selection saved:** {provider_name} - `{model_name}`\n_Note: Phase 1 - Selection saved but not yet used for inference_",
+                        text=f"✅ **Selection saved:** {provider_name} - `{model_name}`\n_Your preference will persist across bot restarts._",
                         response_type="ephemeral",
                         replace_original=False,
                     )
-                    self.logger.info(f"Model switched to {provider_id}:{model_name}")
                 else:
                     await respond(
                         text=f"⚠️ {result.get('error', 'Failed to switch model')}",
@@ -2220,7 +2306,6 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
         # Inject action metadata so the LLM knows what actually happened
         # This prevents the LLM from claiming it searched when it didn't
         # Also inject current time from message timestamp
-        from datetime import datetime
         current_time_str = ""
         if message_ts:
             try:
