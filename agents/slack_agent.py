@@ -81,6 +81,22 @@ from slack_bot.file_uploader import (
 from services.model_manager import ModelManager
 from providers.gemini_adapter import GeminiProvider, QuotaExhaustedError
 
+# Tool architecture
+from slack_bot.tools.base_tool import BaseTool, UserScopedTool, ToolResult
+from slack_bot.tools.tool_registry import ToolRegistry
+from slack_bot.tools.tool_executor import ToolExecutor
+from slack_bot.tools.tool_state import ToolStateStore
+from slack_bot.tools.builtin.web_search_tool import WebSearchTool
+from slack_bot.tools.builtin.brain_search_tool import BrainSearchTool
+from slack_bot.tools.builtin.facts_tool import (
+    FactsTool,
+    FactsStore,
+    message_references_personal_context,
+)
+from slack_bot.mission_manager import MissionManager
+from slack_bot.tools_ui import build_tools_ui, parse_tool_toggle_action
+from slack_bot.facts_ui import build_facts_ui, build_fact_edit_view
+
 
 # ==================================================================
 # API Key Storage (secure local file)
@@ -300,6 +316,19 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
         
         # API key store for user-provided keys (Gemini, etc.)
         self.api_key_store = ApiKeyStore()
+
+        # ---- Tool architecture (Phase 1a/1b) ----
+        self.tool_state_store = ToolStateStore()
+        self.tool_registry = ToolRegistry(self.tool_state_store)
+        self.tool_executor = ToolExecutor(self.tool_registry)
+
+        # Register built-in tools
+        self.tool_registry.register(WebSearchTool(self.web_search))
+        self.tool_registry.register(BrainSearchTool(self.search, self.min_relevance_score))
+        self.tool_registry.register(FactsTool())
+
+        # Mission principles (hot-reloads from ~/.brain-mission.md)
+        self.mission_manager = MissionManager()
 
         # Feature flags
         self.enable_file_attachments = config.get("enable_file_attachments", True)
@@ -1509,6 +1538,365 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
                     text=f"⚠️ Error saving note: {str(e)}",
                 )
 
+        # ==================================================================
+        # /tools command - Manage tool enable/disable state
+        # ==================================================================
+
+        @self.app.command("/tools")
+        async def handle_tools_command(ack, command, respond):
+            """Handle /tools command - show tool management UI."""
+            await ack()
+
+            try:
+                user_id = command["user_id"]
+                blocks = build_tools_ui(self.tool_registry, user_id)
+                await respond(
+                    text="Tool Management",
+                    blocks=blocks,
+                    response_type="ephemeral",
+                )
+                self.logger.info(f"User {user_id} opened /tools UI")
+            except Exception as e:
+                self.logger.error(f"Error handling /tools command: {e}", exc_info=True)
+                await respond(
+                    text=f"⚠️ Error loading tools: {str(e)}",
+                    response_type="ephemeral",
+                )
+
+        @self.app.action(re.compile(r"^tool_toggle_"))
+        async def handle_tool_toggle(ack, body, action, respond):
+            """Handle tool enable/disable toggle."""
+            await ack()
+
+            try:
+                user_id = body["user"]["id"]
+                tool_name, should_enable = parse_tool_toggle_action(
+                    action.get("value", "")
+                )
+
+                if not tool_name:
+                    await respond(
+                        text="⚠️ Invalid tool toggle action.",
+                        response_type="ephemeral",
+                        replace_original=False,
+                    )
+                    return
+
+                self.tool_registry.set_enabled(user_id, tool_name, should_enable)
+                status = "enabled" if should_enable else "disabled"
+                self.logger.info(f"User {user_id} {status} tool: {tool_name}")
+
+                # Rebuild and replace the tool list
+                blocks = build_tools_ui(self.tool_registry, user_id)
+                await respond(
+                    text="Tool Management",
+                    blocks=blocks,
+                    response_type="ephemeral",
+                    replace_original=True,
+                )
+            except Exception as e:
+                self.logger.error(f"Error toggling tool: {e}", exc_info=True)
+                await respond(
+                    text=f"⚠️ Error: {str(e)}",
+                    response_type="ephemeral",
+                    replace_original=False,
+                )
+
+        # ==================================================================
+        # /facts command - Manage persistent user facts (FACTS)
+        # ==================================================================
+
+        @self.app.command("/facts")
+        async def handle_facts_command(ack, command, client):
+            """Handle /facts command - open modal for fact management."""
+            await ack()
+
+            try:
+                user_id = command["user_id"]
+                trigger_id = command["trigger_id"]
+                blocks = build_facts_ui(user_id)
+
+                modal = {
+                    "type": "modal",
+                    "callback_id": "facts_modal_stub",
+                    "title": {"type": "plain_text", "text": "🧠 Facts"},
+                    "close": {"type": "plain_text", "text": "Done"},
+                    "blocks": blocks,
+                }
+
+                await client.views_open(trigger_id=trigger_id, view=modal)
+                self.logger.info(f"User {user_id} opened /facts modal")
+            except Exception as e:
+                self.logger.error(f"Error handling /facts command: {e}", exc_info=True)
+
+        @self.app.action("facts_add_new")
+        async def handle_facts_add_new(ack, body, client):
+            """Handle 'Add Fact' button — push add/edit form onto modal stack."""
+            await ack()
+
+            try:
+                user_id = body["user"]["id"]
+                trigger_id = body["trigger_id"]
+                form_blocks = build_fact_edit_view(user_id)
+
+                add_view = {
+                    "type": "modal",
+                    "callback_id": "fact_add_submit",
+                    "title": {"type": "plain_text", "text": "➕ Add Fact"},
+                    "submit": {"type": "plain_text", "text": "Save"},
+                    "close": {"type": "plain_text", "text": "Cancel"},
+                    "private_metadata": user_id,
+                    "blocks": form_blocks,
+                }
+
+                await client.views_push(trigger_id=trigger_id, view=add_view)
+            except Exception as e:
+                self.logger.error(f"Error opening add fact form: {e}", exc_info=True)
+
+        @self.app.action(re.compile(r"^fact_overflow_"))
+        async def handle_fact_overflow(ack, body, action, client):
+            """Handle fact overflow menu (edit/delete)."""
+            await ack()
+
+            try:
+                user_id = body["user"]["id"]
+                selected = action.get("selected_option", {}).get("value", "")
+
+                if not selected or ":" not in selected:
+                    return
+
+                op, key = selected.split(":", 1)
+
+                if op == "delete":
+                    store = FactsStore(user_id)
+                    store.delete(key)
+                    self.logger.info(f"User {user_id} deleted fact: {key}")
+
+                    # Refresh the modal
+                    view_id = body["view"]["id"]
+                    blocks = build_facts_ui(user_id)
+                    updated_view = {
+                        "type": "modal",
+                        "callback_id": "facts_modal_stub",
+                        "title": {"type": "plain_text", "text": "🧠 Facts"},
+                        "close": {"type": "plain_text", "text": "Done"},
+                        "blocks": blocks,
+                    }
+                    await client.views_update(view_id=view_id, view=updated_view)
+
+                elif op == "edit":
+                    store = FactsStore(user_id)
+                    fact = store.get(key)
+                    if fact:
+                        trigger_id = body["trigger_id"]
+                        form_blocks = build_fact_edit_view(
+                            user_id,
+                            key=key,
+                            value=fact.get("value", ""),
+                            category=fact.get("category", "other"),
+                        )
+
+                        import json as _json
+                        edit_view = {
+                            "type": "modal",
+                            "callback_id": "fact_edit_submit",
+                            "title": {"type": "plain_text", "text": "✏️ Edit Fact"},
+                            "submit": {"type": "plain_text", "text": "Save"},
+                            "close": {"type": "plain_text", "text": "Cancel"},
+                            "private_metadata": _json.dumps({"user_id": user_id, "original_key": key}),
+                            "blocks": form_blocks,
+                        }
+
+                        await client.views_push(trigger_id=trigger_id, view=edit_view)
+            except Exception as e:
+                self.logger.error(f"Error handling fact overflow: {e}", exc_info=True)
+
+        @self.app.action("facts_clear_all")
+        async def handle_facts_clear_all(ack, body, client):
+            """Handle 'Clear All' button — delete every fact for this user."""
+            await ack()
+
+            try:
+                user_id = body["user"]["id"]
+                store = FactsStore(user_id)
+                facts = store.list_facts()
+                for fact in facts:
+                    store.delete(fact["key"])
+                self.logger.info(f"User {user_id} cleared all {len(facts)} facts")
+
+                # Refresh modal
+                view_id = body["view"]["id"]
+                blocks = build_facts_ui(user_id)
+                updated_view = {
+                    "type": "modal",
+                    "callback_id": "facts_modal_stub",
+                    "title": {"type": "plain_text", "text": "🧠 Facts"},
+                    "close": {"type": "plain_text", "text": "Done"},
+                    "blocks": blocks,
+                }
+                await client.views_update(view_id=view_id, view=updated_view)
+            except Exception as e:
+                self.logger.error(f"Error clearing facts: {e}", exc_info=True)
+
+        @self.app.view("fact_add_submit")
+        async def handle_fact_add_submit(ack, view, body, client):
+            """Handle fact add modal submission."""
+            await ack()
+
+            try:
+                user_id = view.get("private_metadata", body["user"]["id"])
+                values = view["state"]["values"]
+
+                key = values.get("fact_key_block", {}).get("fact_key_input", {}).get("value", "").strip()
+                value = values.get("fact_value_block", {}).get("fact_value_input", {}).get("value", "").strip()
+                category = (
+                    values.get("fact_category_block", {})
+                    .get("fact_category_input", {})
+                    .get("selected_option", {})
+                    .get("value", "other")
+                )
+
+                if not key or not value:
+                    return
+
+                store = FactsStore(user_id)
+                store.store(key, value, category)
+                self.logger.info(f"User {user_id} added fact: {key} [{category}]")
+
+                # DM user confirmation
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text=f"✅ Fact saved: `{key}` = {value}",
+                )
+            except Exception as e:
+                self.logger.error(f"Error saving fact: {e}", exc_info=True)
+
+        @self.app.view("fact_edit_submit")
+        async def handle_fact_edit_submit(ack, view, body, client):
+            """Handle fact edit modal submission."""
+            await ack()
+
+            try:
+                import json as _json
+                metadata = _json.loads(view.get("private_metadata", "{}"))
+                user_id = metadata.get("user_id", body["user"]["id"])
+                original_key = metadata.get("original_key", "")
+
+                values = view["state"]["values"]
+
+                new_key = values.get("fact_key_block", {}).get("fact_key_input", {}).get("value", "").strip()
+                value = values.get("fact_value_block", {}).get("fact_value_input", {}).get("value", "").strip()
+                category = (
+                    values.get("fact_category_block", {})
+                    .get("fact_category_input", {})
+                    .get("selected_option", {})
+                    .get("value", "other")
+                )
+
+                if not new_key or not value:
+                    return
+
+                store = FactsStore(user_id)
+
+                # If key changed, delete the old one
+                if original_key and original_key != new_key:
+                    store.delete(original_key)
+
+                store.store(new_key, value, category)
+                self.logger.info(f"User {user_id} edited fact: {original_key} → {new_key} [{category}]")
+
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text=f"✅ Fact updated: `{new_key}` = {value}",
+                )
+            except Exception as e:
+                self.logger.error(f"Error editing fact: {e}", exc_info=True)
+
+        # ==================================================================
+        # /mission command - View/edit agent mission principles
+        # ==================================================================
+
+        @self.app.command("/mission")
+        async def handle_mission_command(ack, command, client):
+            """Handle /mission command - open modal to view/edit mission principles."""
+            await ack()
+
+            try:
+                user_id = command["user_id"]
+                trigger_id = command["trigger_id"]
+
+                current_mission = await self.mission_manager.load()
+
+                modal = {
+                    "type": "modal",
+                    "callback_id": "mission_submit",
+                    "title": {"type": "plain_text", "text": "🎯 Mission"},
+                    "submit": {"type": "plain_text", "text": "Save"},
+                    "close": {"type": "plain_text", "text": "Cancel"},
+                    "blocks": [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": (
+                                    "*Agent Mission Principles*\n\n"
+                                    "These principles guide how the AI assistant behaves. "
+                                    "They are injected into every system prompt.\n\n"
+                                    "Edit below to customize your assistant's behavior."
+                                ),
+                            },
+                        },
+                        {"type": "divider"},
+                        {
+                            "type": "input",
+                            "block_id": "mission_text_block",
+                            "element": {
+                                "type": "plain_text_input",
+                                "action_id": "mission_text_input",
+                                "multiline": True,
+                                "initial_value": current_mission,
+                            },
+                            "label": {"type": "plain_text", "text": "Mission Principles"},
+                        },
+                    ],
+                }
+
+                await client.views_open(trigger_id=trigger_id, view=modal)
+                self.logger.info(f"User {user_id} opened /mission modal")
+            except Exception as e:
+                self.logger.error(f"Error handling /mission command: {e}", exc_info=True)
+
+        @self.app.view("mission_submit")
+        async def handle_mission_submit(ack, view, body, client):
+            """Handle mission modal submission — save updated principles."""
+            await ack()
+
+            try:
+                user_id = body["user"]["id"]
+                values = view["state"]["values"]
+                new_mission = (
+                    values.get("mission_text_block", {})
+                    .get("mission_text_input", {})
+                    .get("value", "")
+                    .strip()
+                )
+
+                if new_mission:
+                    saved = await self.mission_manager.save(new_mission)
+                    if saved:
+                        await client.chat_postMessage(
+                            channel=user_id,
+                            text="✅ Mission principles updated! Changes take effect on your next message.",
+                        )
+                        self.logger.info(f"User {user_id} updated mission principles ({len(new_mission)} chars)")
+                    else:
+                        await client.chat_postMessage(
+                            channel=user_id,
+                            text="⚠️ Failed to save mission principles.",
+                        )
+            except Exception as e:
+                self.logger.error(f"Error saving mission: {e}", exc_info=True)
+
     async def _process_file_attachment(
         self, attachment: Dict, channel_id: str, user_id: str
     ) -> str:
@@ -1709,6 +2097,27 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
         # Add system prompt
         messages.append(Message(role="system", content=self.system_prompt))
 
+        # ---- FACTS context injection (if message references personal context) ----
+        facts_context = ""
+        try:
+            search_text = user_message or text
+            if message_references_personal_context(search_text):
+                facts_store = FactsStore(user_id)
+                facts_context = facts_store.get_context_for_injection(limit=20)
+                if facts_context:
+                    messages.append(Message(role="system", content=facts_context))
+                    self.logger.info(f"Injected FACTS context ({facts_store.count()} facts stored)")
+        except Exception as e:
+            self.logger.warning(f"FACTS injection failed: {e}")
+
+        # ---- Mission principles injection ----
+        try:
+            mission_prompt = await self.mission_manager.get_for_prompt()
+            if mission_prompt:
+                messages.append(Message(role="system", content=mission_prompt))
+        except Exception as e:
+            self.logger.warning(f"Mission principles injection failed: {e}")
+
         # Add conversation history — this is the PRIMARY context
         for msg in history:
             messages.append(Message(role=msg["role"], content=msg["content"]))
@@ -1727,7 +2136,8 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
         action_note = (
             f"[Actions taken: brain_search={'yes' if context else 'no'}, "
             f"web_search={'yes' if web_context else 'no'}, "
-            f"past_conversations={'yes' if past_context else 'no'}]"
+            f"past_conversations={'yes' if past_context else 'no'}, "
+            f"facts_loaded={'yes' if facts_context else 'no'}]"
         )
         messages.append(Message(role="system", content=action_note))
 
@@ -2060,6 +2470,20 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
         except SlackApiError as e:
             errors.append(f"Slack auth failed: {e}")
             self.logger.error(f"❌ Slack auth failed: {e}")
+
+        # Check tool registry (non-critical)
+        try:
+            tool_count = len(self.tool_registry.list_tools())
+            self.logger.info(f"✅ Tool registry OK ({tool_count} tools registered)")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Tool registry check failed: {e}")
+
+        # Check mission manager (non-critical)
+        try:
+            mission = await self.mission_manager.load()
+            self.logger.info(f"✅ Mission principles OK ({len(mission)} chars)")
+        except Exception as e:
+            self.logger.warning(f"⚠️ Mission principles unavailable: {e}")
 
         if errors:
             # Ollama and Slack are critical — fail startup if either is down

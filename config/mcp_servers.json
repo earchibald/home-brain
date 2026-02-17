@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "github": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {"GITHUB_TOKEN": "vaultwarden:GITHUB_TOKEN"},
+      "enabled": false,
+      "description": "GitHub repository operations"
+    },
+    "filesystem": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+      "env": {},
+      "enabled": false,
+      "description": "Local filesystem read/write operations"
+    }
+  }
+}

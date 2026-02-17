@@ -18,3 +18,6 @@ e2e-results/
 e2e-results-latest/
 e2e-run-*/
 .vaultwarden
+
+# MCP local override (machine-specific paths/secrets)
+config/mcp_servers.local.json
