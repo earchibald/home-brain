@@ -1,0 +1,26 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90d9', 'primaryTextColor': '#fff', 'lineColor': '#5a6f85'}}}%%
+flowchart TD
+    Start([📨 Message Received]) --> Extract[Extract lowercase words]
+    Extract --> Q1{Contains greetings?<br/><small>hi, hello, thanks, bye</small>}
+    
+    Q1 -->|Yes| GREETING[🙋 GREETING<br/><small>No context needed</small>]
+    Q1 -->|No| Q2{Personal signals?<br/><small>my, I, preferences</small>}
+    
+    Q2 -->|Yes| PERSONAL[👤 PERSONAL<br/><small>Enable FACTS only</small>]
+    Q2 -->|No| Q3{Knowledge keywords?<br/><small>what, wrote, remember</small>}
+    
+    Q3 -->|Yes| KNOWLEDGE[📚 KNOWLEDGE<br/><small>Enable Brain search</small>]
+    Q3 -->|No| Q4{Research signals?<br/><small>search, find, latest</small>}
+    
+    Q4 -->|Yes| RESEARCH[🔍 RESEARCH<br/><small>Enable Web search</small>]
+    Q4 -->|No| Q5{Task keywords?<br/><small>create, analyze, format</small>}
+    
+    Q5 -->|Yes| TASK[⚙️ TASK<br/><small>Pure LLM processing</small>]
+    Q5 -->|No| GENERAL[💬 GENERAL<br/><small>Brain + FACTS default</small>]
+    
+    style GREETING fill:#90EE90
+    style PERSONAL fill:#FFB6C1
+    style KNOWLEDGE fill:#87CEEB
+    style RESEARCH fill:#DDA0DD
+    style TASK fill:#F0E68C
+    style GENERAL fill:#D3D3D3

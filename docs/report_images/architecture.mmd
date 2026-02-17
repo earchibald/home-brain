@@ -1,0 +1,37 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90d9', 'primaryTextColor': '#fff', 'primaryBorderColor': '#2962a8', 'lineColor': '#5a6f85', 'secondaryColor': '#f0f4f8', 'tertiaryColor': '#e1f5fe'}}}%%
+flowchart TB
+    subgraph Slack["📱 Slack"]
+        User[fa:fa-user User Message]
+    end
+    
+    subgraph SlackAgent["🤖 SlackAgent"]
+        direction TB
+        PreHooks["⚡ Pre-Process Hooks<br/><small>Intent Classification</small>"]
+        Tracker["📊 Source Tracker<br/><small>ContextVar Scoped</small>"]
+        ToolLoop["🔧 Tool Executor<br/><small>brain_search, web_search</small>"]
+        LLM["🧠 LLM<br/><small>llama3.2 / gemini</small>"]
+        PostHooks["✨ Post-Process Hooks<br/><small>Citation Injection</small>"]
+    end
+    
+    subgraph Tools["🛠️ Built-in Tools"]
+        Brain["📚 brain_search<br/><small>ChromaDB</small>"]
+        Web["🌐 web_search<br/><small>DuckDuckGo</small>"]
+        Facts["💭 facts<br/><small>Personal Memory</small>"]
+    end
+    
+    subgraph Services["🏗️ Infrastructure"]
+        ChromaDB[(ChromaDB<br/>NUC-1)]
+        Ollama["Ollama<br/>Mac Mini"]
+    end
+    
+    User --> PreHooks
+    PreHooks --> Tracker
+    Tracker --> ToolLoop
+    ToolLoop --> Brain
+    ToolLoop --> Web
+    ToolLoop --> Facts
+    Brain --> ChromaDB
+    ToolLoop --> LLM
+    LLM --> Ollama
+    LLM --> PostHooks
+    PostHooks --> |"Response + Citations"| User

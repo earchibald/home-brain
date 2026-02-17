@@ -1,0 +1,25 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90d9', 'primaryTextColor': '#fff', 'lineColor': '#5a6f85'}}}%%
+sequenceDiagram
+    participant U as 👤 User
+    participant A as 🤖 Agent
+    participant T as 📊 Tracker
+    participant B as 📚 Brain
+    participant W as 🌐 Web
+    participant H as ✨ Hook
+    
+    U->>A: "What did I write about X?"
+    A->>T: set_tracker(SourceTracker())
+    A->>B: brain_search("X")
+    B->>T: record_source("brain", "notes.md")
+    B-->>A: Search results
+    A->>W: web_search("X")
+    W->>T: record_source("web", "example.com")
+    W-->>A: Search results
+    A->>A: LLM generates response
+    A->>H: citation_hook(response)
+    H->>T: get_sources()
+    T-->>H: [brain: notes.md, web: example.com]
+    H->>H: Format citations
+    H-->>A: Response + 📚📌🌐 citations
+    A->>T: clear_tracker()
+    A-->>U: Final response with sources

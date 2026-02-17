@@ -1,0 +1,27 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90d9', 'primaryTextColor': '#fff', 'lineColor': '#5a6f85'}}}%%
+flowchart LR
+    subgraph Registry["🗂️ Tool Registry"]
+        direction TB
+        subgraph Tools["Visible in /tools UI"]
+            Brain["📚 brain_search<br/><small>category=tool</small>"]
+            Web["🌐 web_search<br/><small>category=tool</small>"]
+            Facts["💭 facts<br/><small>category=tool</small>"]
+        end
+        subgraph Skills["Hidden from UI"]
+            FactsCheck["🔍 facts_check<br/><small>category=skill</small>"]
+            Future1["... future skills<br/><small>category=skill</small>"]
+        end
+    end
+    
+    subgraph Access["Access Patterns"]
+        User["👤 User<br/><small>/tools command</small>"]
+        LLM["🧠 LLM<br/><small>function calling</small>"]
+    end
+    
+    User -->|"Can see & toggle"| Tools
+    User -.->|"Hidden from"| Skills
+    LLM -->|"Can invoke"| Tools
+    LLM -->|"Can invoke"| Skills
+    
+    style Skills fill:#f9f9f9,stroke:#999
+    style Tools fill:#e1f5fe
