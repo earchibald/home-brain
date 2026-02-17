@@ -957,7 +957,7 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
             return False
 
         @self.app.command("/model")
-        async def handle_model_command(ack, respond, command):
+        async def handle_model_command(ack, command, respond):
             """Handle /model command for dynamic model switching"""
             await ack()
 
