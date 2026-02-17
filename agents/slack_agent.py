@@ -36,6 +36,7 @@ from clients.web_search_client import WebSearchClient
 from slack_bot.message_processor import detect_file_attachments
 from slack_bot.file_handler import download_file_from_slack, extract_text_content
 from slack_bot.performance_monitor import PerformanceMonitor
+from slack_bot.slack_message_updater import SlackMessageUpdater
 from slack_bot.model_selector import build_model_selector_ui, apply_model_selection
 from slack_bot.index_manager import (
     build_index_dashboard,
@@ -417,8 +418,19 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
         self.enable_file_attachments = config.get("enable_file_attachments", True)
         self.enable_performance_alerts = config.get("enable_performance_alerts", True)
 
+        # Slack Assistant Framework updater (setStatus, setTitle, setSuggestedPrompts)
+        # Initialized lazily since self.app.client is set up by Bolt after __init__
+        self._message_updater: SlackMessageUpdater | None = None
+
         # Register event handlers
         self._register_handlers()
+
+    @property
+    def message_updater(self) -> SlackMessageUpdater:
+        """Lazy-initialized SlackMessageUpdater wrapping the Bolt client."""
+        if self._message_updater is None:
+            self._message_updater = SlackMessageUpdater(self.app.client)
+        return self._message_updater
 
     def _is_current_model_available(self) -> bool:
         """
@@ -595,6 +607,92 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
     def _register_handlers(self):
         """Register Slack event handlers"""
 
+        # --- Slack Assistant Framework Event Handlers ---
+
+        @self.app.event("assistant_thread_started")
+        async def handle_assistant_thread_started(event, client):
+            """Triggered when a user opens the Assistant view or starts a new thread.
+
+            Sets up suggested prompts and marks the thread as an assistant thread.
+            """
+            try:
+                assistant_thread = event.get("assistant_thread", {})
+                channel_id = assistant_thread.get("channel_id") or event.get("channel")
+                thread_ts = assistant_thread.get("thread_ts") or event.get("thread_ts")
+                user_id = assistant_thread.get("user_id") or event.get("user")
+                context = assistant_thread.get("context", {})
+
+                self.logger.info(
+                    f"Assistant thread started: {channel_id}:{thread_ts} by {user_id}"
+                )
+
+                if channel_id and thread_ts:
+                    # Mark this as an assistant thread for future reference
+                    self.conversations.mark_as_assistant_thread(channel_id, thread_ts)
+
+                    # Save initial context if provided
+                    if context:
+                        self.conversations.save_assistant_context(
+                            channel_id, thread_ts, context
+                        )
+
+                    # Set suggested prompts to guide the user
+                    await self.message_updater.set_suggested_prompts(
+                        channel_id=channel_id,
+                        thread_ts=thread_ts,
+                        prompts=[
+                            {
+                                "title": "Summarize Context",
+                                "message": "Summarize the channel I am currently looking at.",
+                            },
+                            {
+                                "title": "Draft Response",
+                                "message": "Draft a polite response to the last message in this channel.",
+                            },
+                            {
+                                "title": "Search Knowledge",
+                                "message": "Search the internal knowledge base for 'deployment'.",
+                            },
+                            {
+                                "title": "Help",
+                                "message": "What capabilities do you have?",
+                            },
+                        ],
+                    )
+            except Exception as e:
+                self.logger.error(
+                    f"Failed to handle assistant_thread_started: {e}",
+                    exc_info=True,
+                )
+
+        @self.app.event("assistant_thread_context_changed")
+        async def handle_assistant_context_changed(event):
+            """Triggered when the user changes context (e.g. switches channel) while Assistant is open.
+
+            Saves the context so it can be injected into the next LLM prompt.
+            """
+            try:
+                assistant_thread = event.get("assistant_thread", {})
+                channel_id = assistant_thread.get("channel_id") or event.get("channel")
+                thread_ts = assistant_thread.get("thread_ts") or event.get("thread_ts")
+                context = assistant_thread.get("context", {})
+
+                self.logger.info(
+                    f"Context changed for {channel_id}:{thread_ts} -> {context}"
+                )
+
+                if channel_id and thread_ts:
+                    self.conversations.save_assistant_context(
+                        channel_id, thread_ts, context
+                    )
+            except Exception as e:
+                self.logger.error(
+                    f"Failed to handle assistant_thread_context_changed: {e}",
+                    exc_info=True,
+                )
+
+        # --- Standard Event Handlers ---
+
         @self.app.event("message")
         async def handle_message(event, say, client):
             """Handle incoming DM messages"""
@@ -634,6 +732,20 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
                 f"event.thread_ts={event.get('thread_ts')}, "
                 f"channel_id={channel_id}, resolved thread_ts={thread_ts}"
             )
+
+            # --- Detect Assistant thread status ---
+            is_assistant = self.conversations.is_assistant_thread(
+                channel_id, event.get("thread_ts") or event.get("ts")
+            )
+            assistant_context = None
+            if is_assistant:
+                assistant_context = self.conversations.get_assistant_context(
+                    channel_id, event.get("thread_ts") or event.get("ts")
+                )
+                self.logger.info(
+                    f"Processing Assistant thread message "
+                    f"(context={'yes' if assistant_context else 'no'})"
+                )
 
             self.logger.debug(f"Message event keys: {list(event.keys())}")
             self.logger.debug(f"Message has 'files' key: {'files' in event}")
@@ -709,18 +821,53 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
 
             working_ts = None
             try:
-                # Send "working" indicator (customize based on attachment presence)
-                working_text = (
-                    "Analyzing attachment... 📎"
-                    if file_content
-                    else "Working on it... 🧠"
-                )
-                try:
-                    working_msg = await say(text=working_text)
-                    working_ts = working_msg.get("ts")
-                    self.logger.debug(f"Sent working indicator: {working_ts}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to send working indicator: {e}")
+                # Send "working" indicator
+                if is_assistant:
+                    # Use native Assistant status API (no visible message)
+                    try:
+                        await self.message_updater.set_assistant_status(
+                            channel_id=channel_id,
+                            thread_ts=event.get("thread_ts") or event.get("ts"),
+                            status="is thinking...",
+                        )
+                    except Exception as e:
+                        self.logger.warning(f"Failed to set assistant status: {e}")
+                else:
+                    # Legacy: send a visible "Working..." message
+                    working_text = (
+                        "Analyzing attachment... 📎"
+                        if file_content
+                        else "Working on it... 🧠"
+                    )
+                    try:
+                        working_msg = await say(text=working_text)
+                        working_ts = working_msg.get("ts")
+                        self.logger.debug(f"Sent working indicator: {working_ts}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to send working indicator: {e}")
+
+                # Inject assistant context into prompt if available
+                if is_assistant and assistant_context:
+                    context_parts = []
+                    if assistant_context.get("channel_id"):
+                        context_parts.append(
+                            f"The user is currently viewing channel ID: "
+                            f"{assistant_context['channel_id']}"
+                        )
+                    if assistant_context.get("team_id"):
+                        context_parts.append(
+                            f"Team ID: {assistant_context['team_id']}"
+                        )
+                    if context_parts:
+                        system_context = (
+                            "\n[System Context: "
+                            + "; ".join(context_parts)
+                            + "]\n"
+                        )
+                        text = system_context + text
+                        self.logger.info(
+                            f"Injected assistant context into prompt"
+                        )
 
                 # Extract message timestamp for temporal context
                 message_ts = event.get("ts", "")
@@ -730,17 +877,35 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
                     user_id, text, thread_ts, user_message=user_message, has_attachments=has_attachments, message_ts=message_ts
                 )
 
-                # Delete working message if we successfully sent it
-                if working_ts:
+                # Clean up working indicator
+                if is_assistant:
+                    # Status clears automatically when we post a message.
+                    pass
+                elif working_ts:
                     try:
                         await client.chat_delete(channel=channel_id, ts=working_ts)
                         self.logger.debug(f"Deleted working indicator: {working_ts}")
                     except Exception as e:
                         self.logger.warning(f"Failed to delete working indicator: {e}")
-                        # Continue anyway - working message will still be visible but that's OK
 
                 # Send real response (directly in DM, not in thread)
                 await say(text=response)
+
+                # Generate a title for assistant threads
+                if is_assistant and event.get("thread_ts"):
+                    try:
+                        title = (
+                            user_message[:30] + "..."
+                            if len(user_message) > 30
+                            else user_message
+                        )
+                        await self.message_updater.set_assistant_title(
+                            channel_id=channel_id,
+                            thread_ts=event.get("thread_ts"),
+                            title=title,
+                        )
+                    except Exception as e:
+                        self.logger.warning(f"Failed to set assistant title: {e}")
 
                 # If files were shared with text, also offer to save them
                 if file_attachments_for_save:

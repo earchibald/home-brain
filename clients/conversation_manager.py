@@ -20,7 +20,12 @@ logger = logging.getLogger(__name__)
 
 
 class ConversationManager:
-    """Manages conversation history with automatic summarization"""
+    """Manages conversation history with automatic summarization.
+
+    Also supports Slack Assistant Framework context awareness:
+      - Tracking which threads are Assistant threads
+      - Storing per-thread context (e.g. focused channel)
+    """
 
     def __init__(self, brain_path: str, llm_client=None, cxdb_client=None):
         """
@@ -41,6 +46,12 @@ class ConversationManager:
 
         # Load thread_ts -> context_id mapping (for cxdb)
         self._context_map = self._load_context_map()
+
+        # --- Slack Assistant Framework state ---
+        # Key: f"{channel_id}:{thread_ts}" -> Value: Context dictionary
+        self.assistant_contexts: Dict[str, Dict] = {}
+        # Track which threads are "Assistant" threads vs standard DMs
+        self.assistant_threads: set = set()
 
     def _get_conversation_path(self, user_id: str, thread_id: str) -> Path:
         """Get path to conversation file"""
@@ -519,6 +530,48 @@ Concise summary:"""
             deleted = True
         
         return deleted
+
+    # ------------------------------------------------------------------
+    # Slack Assistant Framework methods
+    # ------------------------------------------------------------------
+
+    def mark_as_assistant_thread(self, channel_id: str, thread_ts: str) -> None:
+        """Mark a specific thread as being part of the Assistant UI surface."""
+        if not thread_ts:
+            return
+        key = f"{channel_id}:{thread_ts}"
+        self.assistant_threads.add(key)
+        logger.info(f"Marked thread {key} as Assistant thread")
+
+    def is_assistant_thread(self, channel_id: str, thread_ts: str) -> bool:
+        """Check if a thread is an Assistant thread."""
+        if not thread_ts:
+            return False
+        key = f"{channel_id}:{thread_ts}"
+        return key in self.assistant_threads
+
+    def save_assistant_context(
+        self, channel_id: str, thread_ts: str, context: Dict
+    ) -> None:
+        """Save context provided by assistant_thread_context_changed event.
+
+        This stores information like which channel the user is currently viewing
+        so it can be injected into the next LLM prompt.
+        """
+        if not thread_ts:
+            return
+        key = f"{channel_id}:{thread_ts}"
+        self.assistant_contexts[key] = context
+        logger.debug(f"Updated assistant context for {key}: {context}")
+
+    def get_assistant_context(
+        self, channel_id: str, thread_ts: str
+    ) -> Optional[Dict]:
+        """Retrieve the current context for an assistant thread."""
+        if not thread_ts:
+            return None
+        key = f"{channel_id}:{thread_ts}"
+        return self.assistant_contexts.get(key)
 
 
 # Example usage
