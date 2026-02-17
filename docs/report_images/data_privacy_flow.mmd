@@ -1,0 +1,21 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90d9', 'primaryTextColor': '#fff', 'lineColor': '#5a6f85'}}}%%
+graph TD
+    User((User)) -->|Message| Slack[Slack Cloud]
+    Slack -->|Event| Bot[Brain Bot NUC-2]
+    
+    subgraph PrivateZone
+        Bot -->|Queries| Vector[ChromaDB NUC-1]
+        Bot -->|Inference| Ollama[Ollama Llama 3.2 Mac Mini]
+        Bot -->|Storage| Files[File Storage NUC-3]
+        Bot -->|Secrets| Vault[Vaultwarden NUC-1]
+    end
+    
+    subgraph PublicZone
+        Bot -.->|Optional: If Gemini Selected| Google[Google Gemini API]
+        Bot -.->|Optional: If Web Search| DDG[DuckDuckGo]
+    end
+    
+    style Ollama fill:#4caf50,stroke:#333,stroke-width:2px,color:#fff
+    style Google fill:#9c27b0,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5,color:#fff
+    style Vector fill:#2196f3,stroke:#333,color:#fff
+    style Vault fill:#ff9800,stroke:#333,color:#fff

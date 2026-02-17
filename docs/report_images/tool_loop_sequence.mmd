@@ -1,0 +1,27 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90d9', 'primaryTextColor': '#fff', 'lineColor': '#5a6f85'}}}%%
+sequenceDiagram
+    participant User as 👤 User
+    participant Agent as 🤖 SlackAgent
+    participant LLM as 🧠 LLM (Ollama/Gemini)
+    participant Tools as 🛠️ ToolExecutor
+    participant Brain as 📚 Brain/Web
+
+    User->>Agent: "Find strict React hooks"
+    Agent->>Agent: intent_classifier_hook()
+    Note right of Agent: Intent: RESEARCH
+    
+    Agent->>LLM: Generate response (with tools)
+    LLM->>Agent: <tool_code>web_search("React hooks strict mode")</tool_code>
+    
+    Agent->>Tools: execute("web_search", ...)
+    Tools->>Brain: Fetch duckduckgo results
+    Brain->>Tools: Returns snippets & URLs
+    Tools->>Agent: ToolResult(output="...", sensitive=False)
+    
+    Agent->>LLM: Tool Result Context + Original Question
+    LLM->>Agent: Final Answer: "According to the docs..."
+    
+    Agent->>Agent: citation_hook()
+    Note right of Agent: Appends: 🌐 React Docs
+    
+    Agent->>User: Final Response

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brain Assistant: Developer Guide</title>
+    <style>
+        :root {
+            --primary: #c0392b;
+            --text: #2c3e50;
+            --bg: #f9fbfd;
+            --code-bg: #f5f7f9;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: var(--bg);
+        }
+        h1, h2, h3 { color: #1a2a3a; margin-top: 2rem; }
+        h1 { font-size: 2.5rem; border-bottom: 2px solid var(--primary); padding-bottom: 0.5rem; }
+        .hero { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 2rem; }
+        code { background: var(--code-bg); padding: 0.2rem 0.4rem; border-radius: 4px; font-family: "Menlo", "Monaco", monospace; font-size: 0.9em; }
+        pre { background: var(--code-bg); padding: 1rem; border-radius: 8px; overflow-x: auto; }
+        .callout { background: #fee; border-left: 4px solid var(--primary); padding: 1rem; margin: 1rem 0; border-radius: 0 8px 8px 0; }
+        .img-container { text-align: center; margin: 2rem 0; background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        img { max-width: 100%; height: auto; }
+        .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.8rem; font-weight: bold; background: #eee; }
+    </style>
+</head>
+<body>
+
+    <header class="hero">
+        <h1>Brain Assistant Developer Guide</h1>
+        <p><strong>Building Private Intelligence for the NUC Cluster</strong></p>
+        <p>This guide explains the architecture, development workflow, and testing strategies for the distributed AI mesh.</p>
+    </header>
+
+    <h2>1. System Architecture</h2>
+    
+    <h3>The "Mesh" (Physical & Logical)</h3>
+    <p>The system is distributed across four physical nodes:</p>
+    <ul>
+        <li><strong>NUC-1:</strong> Orchestrator, ChromaDB (Vector DB), Vaultwarden (Secrets).</li>
+        <li><strong>NUC-2:</strong> Agent Host (Slack Bot Service).</li>
+        <li><strong>NUC-3:</strong> Storage (Backups, Large Files).</li>
+        <li><strong>Mac Mini:</strong> Inference (Ollama/Llama 3.2).</li>
+    </ul>
+
+    <h3>The Tool Loop Sequence</h3>
+    <p>Understanding how the Agent thinks is critical for extending it.</p>
+    <div class="img-container">
+        <img src="report_images/tool_loop_sequence.png" alt="Tool Loop Sequence Diagram">
+    </div>
+
+    <ul>
+        <li><strong>Intent Classification:</strong> <span class="badge">hooks/intent_classifier.py</span> Pre-processes messages to determine context.</li>
+        <li><strong>Tool Execution:</strong> <span class="badge">tools/tool_executor.py</span> Parses LLM output and executes Python functions safely.</li>
+        <li><strong>Source Tracking:</strong> <span class="badge">hooks/source_tracker.py</span> Records every tool usage to generate citations later.</li>
+    </ul>
+
+    <h2>2. Development Workflow ("The Flow")</h2>
+    <div class="callout">
+        <strong>Core Philosophy:</strong> Test First. Deploy Safer.
+    </div>
+
+    <h3>Environment Setup</h3>
+    <pre><code># Assume minimal dependencies initially
+pyenv shell 3.12.12
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements-dev.txt
+</code></pre>
+
+    <h3>The TDD Loop</h3>
+    <ol>
+        <li><strong>Red:</strong> Write a failing test in <code>tests/red/</code>. Use <code>@pytest.mark.red</code>.</li>
+        <li><strong>Green:</strong> Implement the feature until the test passes.</li>
+        <li><strong>Refactor:</strong> Move the test to <code>tests/unit/</code> or <code>tests/integration/</code>.</li>
+    </ol>
+
+    <h3>Running Locally</h3>
+    <p>Use the master script to run the agent locally with mocked Slack events:</p>
+    <pre><code>./run_agent.sh --local</code></pre>
+
+    <h2>3. Working with Agents ("AI Building AI")</h2>
+    
+    <h3>Agent Tools</h3>
+    <p>The repository includes specialized agents to help <em>you</em> code:</p>
+    <ul>
+        <li><strong>Advice Agent:</strong> <code>agents/advice_agent.py</code> - Consults on architectural decisions.</li>
+        <li><strong>Journal Agent:</strong> <code>agents/journal_agent.py</code> - Summarizes daily work logs.</li>
+    </ul>
+
+    <h3>Prompt Engineering Strategy</h3>
+    <p>When asking the Copilot to modify the bot:</p>
+    <ol>
+        <li><strong>Context First:</strong> "Read `slack_agent.py` and `tools/base_tool.py`."</li>
+        <li><strong>Clear Intent:</strong> "Create a `WeatherTool` that checks NUC-1 temperature."</li>
+        <li><strong>Schema Definition:</strong> "Ensure the tool schema matches the `get_tool_spec()` format."</li>
+    </ol>
+
+    <h2>4. Extension Guide</h2>
+
+    <h3>Adding a New Tool</h3>
+    <p>Extending the bot's capabilities is straightforward:</p>
+    <ol>
+        <li>Inherit from <code>BaseTool</code> in <code>slack_bot/tools/</code>.</li>
+        <li>Implement <code>execute()</code> and <code>to_tool_spec()</code>.</li>
+        <li>Register it in <code>slack_bot/tools/tool_registry.py</code>.</li>
+        <li>(Optional) Add a unit test in <code>tests/unit/test_tools.py</code>.</li>
+    </ol>
+
+    <h3>Adding a Fact Category</h3>
+    <p>To teach the bot new kinds of memory:</p>
+    <ul>
+        <li>Update <code>FactsStore</code> in <code>slack_bot/tools/builtin/facts_tool.py</code>.</li>
+        <li>Update the UI definitions in <code>slack_bot/facts_ui.py</code>.</li>
+    </ul>
+
+    <h2>5. Deployment Pipeline</h2>
+    
+    <div class="img-container">
+        <img src="report_images/deployment_pipeline.png" alt="Deployment Pipeline Diagram">
+    </div>
+
+    <h3>The Deployment Script</h3>
+    <p>The <code>deploy_slack_bot.sh</code> script handles the safe rollout to NUC-2.</p>
+    <ul>
+        <li><strong>Safety Check:</strong> It uses `rsync --exclude` to protect `venv/` and secrets.</li>
+        <li><strong>Restart:</strong> Automatically restarts `systemd`.</li>
+        <li><strong>Verify:</strong> Checks service status immediately after deployment.</li>
+    </ul>
+
+    <h3>Observability</h3>
+    <p>Monitor the live bot:</p>
+    <pre><code># On NUC-2
+journalctl -u brain-slack-bot -f -n 100</code></pre>
+
+    <footer style="margin-top: 4rem; padding-top: 2rem; border-top: 1px solid #eee; color: #666; font-size: 0.9rem;">
+        Generated on February 17, 2026 for the Brain Assistant Project.
+    </footer>
+
+</body>
+</html>

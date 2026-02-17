@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brain Assistant: Operating Your Private Intelligence</title>
+    <style>
+        :root {
+            --primary: #4a90d9;
+            --text: #2c3e50;
+            --bg: #f9fbfd;
+            --code-bg: #f5f7f9;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: var(--bg);
+        }
+        h1, h2, h3 { color: #1a2a3a; margin-top: 2rem; }
+        h1 { font-size: 2.5rem; border-bottom: 2px solid var(--primary); padding-bottom: 0.5rem; }
+        .hero { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 2rem; }
+        code { background: var(--code-bg); padding: 0.2rem 0.4rem; border-radius: 4px; font-family: "Menlo", "Monaco", monospace; font-size: 0.9em; }
+        pre { background: var(--code-bg); padding: 1rem; border-radius: 8px; overflow-x: auto; }
+        .command-table { width: 100%; border-collapse: collapse; margin: 1rem 0; background: white; }
+        .command-table th, .command-table td { padding: 1rem; border-bottom: 1px solid #eee; text-align: left; }
+        .command-table th { background: #edf2f7; }
+        .callout { background: #e3f2fd; border-left: 4px solid var(--primary); padding: 1rem; margin: 1rem 0; border-radius: 0 8px 8px 0; }
+        .img-container { text-align: center; margin: 2rem 0; background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        img { max-width: 100%; height: auto; }
+        .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
+        .badge-private { background: #e8f5e9; color: #2e7d32; }
+        .badge-cloud { background: #f3e5f5; color: #7b1fa2; }
+    </style>
+</head>
+<body>
+
+    <header class="hero">
+        <h1>Brain Assistant User Guide</h1>
+        <p><strong>Operating Your Private Intelligence Mesh</strong></p>
+        <p>This is not just a chatbot. It is a distributed, privacy-first intelligence system running on your own hardware (NUC-1, NUC-2, NUC-3, Mac Mini). It remembers your facts, searches your private files, and respects your privacy.</p>
+    </header>
+
+    <h2>1. Introduction</h2>
+    <p>The Brain Assistant is designed to be a personal extension of your mind. Unlike ChatGPT or Claude, it lives <em>with your data</em> inside your home network.</p>
+    
+    <div class="img-container">
+        <h3>Where Your Data Goes</h3>
+        <img src="report_images/data_privacy_flow.png" alt="Data Privacy Flow Diagram">
+    </div>
+
+    <ul>
+        <li><strong>NUC-1 (Orchestrator):</strong> Holds the semantic index (ChromaDB) of your notes.</li>
+        <li><strong>NUC-2 (The Agent):</strong> Runs the Slack bot logic and tools.</li>
+        <li><strong>NUC-3 (Storage):</strong> Securely stores files and backups.</li>
+        <li><strong>Mac Mini (Brain):</strong> Runs local AI models (Ollama) for private inference.</li>
+    </ul>
+
+    <h2>2. Quick Start</h2>
+    
+    <h3>Installation</h3>
+    <p>The bot is already deployed to <strong>NUC-2</strong>. To interact with it, simply:</p>
+    <ol>
+        <li>Open Slack.</li>
+        <li>Go to the <strong>Apps</strong> section.</li>
+        <li>Select <strong>Brain Assistant</strong>.</li>
+        <li>Type <code>Hi</code> to start a conversation.</li>
+    </ol>
+
+    <h3>Slash Command Cheat Sheet</h3>
+    <table class="command-table">
+        <thead>
+            <tr>
+                <th>Command</th>
+                <th>Action</th>
+                <th>When to use</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>/model</code></td>
+                <td>Switch AI Provider</td>
+                <td>Toggle between <strong>Ollama</strong> (Private/Free) and <strong>Gemini</strong> (Smart/Cloud).</td>
+            </tr>
+            <tr>
+                <td><code>/tools</code></td>
+                <td>Manage Capabilities</td>
+                <td>Enable/Disable Web Search or Brain Search for distraction-free chat.</td>
+            </tr>
+            <tr>
+                <td><code>/facts</code></td>
+                <td>Memory Manager</td>
+                <td>View or delete facts the bot has learned about you.</td>
+            </tr>
+            <tr>
+                <td><code>/apikey</code></td>
+                <td>Manage Secrets</td>
+                <td>Securely set your Google Gemini API key.</td>
+            </tr>
+            <tr>
+                <td><code>/mission</code></td>
+                <td>View Directive</td>
+                <td>See the current "System Prompt" running the bot.</td>
+            </tr>
+            <tr>
+                <td><code>/reset</code></td>
+                <td>Clear Context</td>
+                <td>Start a fresh conversation topic.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>3. Core Capabilities</h2>
+
+    <h3>🧠 Brain Search (Private Knowledge)</h3>
+    <p>Ask questions about your own notes. The bot uses <strong>Semantic Search</strong>, meaning it understands concepts, not just keywords.</p>
+    <div class="callout">
+        <strong>Try this:</strong> "What did I write about the Project X architecture?" or "Summarize my notes on Python testing."
+    </div>
+    <p><strong>Citations:</strong> The bot will always cite its sources. Look for the 📚 <strong>Brain</strong> section at the bottom of the response.</p>
+
+    <h3>🌐 Web Search (Real-time Info)</h3>
+    <p>When you ask about current events or technical docs, the bot uses DuckDuckGo to find answers.</p>
+    <p><strong>Privacy Note:</strong> Web search queries are sent anonymously via NUC-2.</p>
+
+    <h3>💭 Personal Memory (Facts)</h3>
+    <p>The bot accumulates a "Facts Profile" about you. It learns your preferences, working style, and project names.</p>
+    <ul>
+        <li><strong>Implicit Learning:</strong> "My favorite language is Python." &rarr; Bot saves this.</li>
+        <li><strong>Explicit Management:</strong> Use <code>/facts</code> to edit or delete any incorrect memory.</li>
+    </ul>
+
+    <h3>📂 File Handling</h3>
+    <p>Drag and drop <strong>PDFs</strong>, <strong>Markdown</strong>, or <strong>Text</strong> files directly into the chat.</p>
+    <ul>
+        <li>The bot will automatically extract the text.</li>
+        <li>You can immediately ask questions about the uploaded file.</li>
+        <li>Limit: ~1MB text extraction per file.</li>
+    </ul>
+
+    <h2>4. Advanced Intelligence</h2>
+
+    <h3>Intent Classification</h3>
+    <p>The bot is smart enough to know <em>what</em> you want before it answers. It classifies your message to save resources:</p>
+    
+    <div class="img-container">
+        <img src="report_images/intent_flow.png" alt="Intent Classification Logic">
+    </div>
+
+    <ul>
+        <li><strong>GREETING:</strong> Fast response, no tools.</li>
+        <li><strong>RESEARCH:</strong> Enables Web Search.</li>
+        <li><strong>KNOWLEDGE:</strong> Enables Brain Search.</li>
+        <li><strong>PERSONAL:</strong> checks Facts.</li>
+    </ul>
+
+    <h3>Model Strategy</h3>
+    <p>You have two "brains" available:</p>
+    <ul>
+        <li><span class="badge badge-private">Ollama (Local)</span>: <strong>Llama 3.2</strong> running on your Mac Mini. 100% Private. Best for daily chat and summarization.</li>
+        <li><span class="badge badge-cloud">Gemini (Cloud)</span>: <strong>Gemini 1.5 Pro</strong> via Google. 100x context window. Best for complex reasoning or analyzing huge documents.</li>
+    </ul>
+    <p>Use <code>/model</code> to switch instantly.</p>
+
+    <h2>5. Maintenance & Troubleshooting</h2>
+
+    <h3>Health Checks</h3>
+    <p>If the bot stops responding:</p>
+    <ol>
+        <li>Check if <strong>NUC-2</strong> is online.</li>
+        <li>SSH into NUC-2 and checking the service: <code>systemctl status brain-slack-bot</code>.</li>
+        <li>Use <code>/reset</code> to clear a stuck conversation loop.</li>
+    </ol>
+
+    <h3>Secret Management</h3>
+    <p><strong>Never</strong> send API keys in chat. Use the <code>/apikey</code> command, which opens a secure modal form. Keys are stored encrypted in Vaultwarden (NUC-1).</p>
+
+    <footer style="margin-top: 4rem; padding-top: 2rem; border-top: 1px solid #eee; color: #666; font-size: 0.9rem;">
+        Generated on February 17, 2026 for the Brain Assistant Project.
+    </footer>
+
+</body>
+</html>

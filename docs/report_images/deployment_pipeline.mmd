@@ -1,0 +1,15 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90d9', 'primaryTextColor': '#fff', 'lineColor': '#5a6f85'}}}%%
+flowchart LR
+    Dev((👩‍💻 Developer)) -->|Code+Tests| Git[Git Push]
+    
+    Git -->|rsync| Nuc2[🖥️ NUC-2 Agents<br/>/home/earchibald/agents]
+    
+    Nuc2 --> Check{Pre-Flight}
+    Check -->|SSH OK| Deploy[📦 Install Venv<br/>pip install -r requirements.txt]
+    Check -->|Fail| Alert[🚨 Notify Failure]
+    
+    Deploy --> Service[⚙️ systemd Restart<br/>brain-slack-bot]
+    
+    Service --> Health{Health Check}
+    Health -->|Pass| Success[✅ Active]
+    Health -->|Fail| Logs[📜 journalctl]
