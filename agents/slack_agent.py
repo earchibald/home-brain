@@ -2613,6 +2613,7 @@ def main():
         "enable_web_search": os.getenv("ENABLE_WEB_SEARCH", "true").lower() == "true",
         "web_search_provider": os.getenv("WEB_SEARCH_PROVIDER", "duckduckgo"),
         "tavily_api_key": os.getenv("TAVILY_API_KEY"),
+        "enable_model_switching": True,
         "notification": {
             "enabled": True
         },
