@@ -9,6 +9,7 @@ from typing import Any, Dict
 
 from slack_bot.tools.base_tool import BaseTool, ToolResult
 from clients.web_search_client import WebSearchClient
+from slack_bot.hooks.source_tracker import get_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,19 @@ class WebSearchTool(BaseTool):
                 )
 
             formatted = self._client.format_results(results, max_snippet_length=200)
+            
+            # Record sources for citation hook
+            tracker = get_tracker()
+            if tracker:
+                urls = [r.href for r in results if hasattr(r, "href") and r.href]
+                snippets = [r.body[:100] for r in results if hasattr(r, "body") and r.body]
+                tracker.record_source(
+                    tool_name=self.name,
+                    success=True,
+                    sources=urls,
+                    snippets=snippets,
+                )
+            
             return ToolResult(
                 tool_name=self.name,
                 success=True,

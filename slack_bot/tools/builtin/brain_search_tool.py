@@ -9,6 +9,7 @@ from typing import Any, Dict
 
 from slack_bot.tools.base_tool import BaseTool, ToolResult
 from clients.semantic_search_client import SemanticSearchClient
+from slack_bot.hooks.source_tracker import get_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,18 @@ class BrainSearchTool(BaseTool):
                     "file": file_name,
                     "score": getattr(result, "score", None),
                 })
+
+            # Record sources for citation hook
+            tracker = get_tracker()
+            if tracker:
+                source_files = [r.get("file", "") for r in raw_results if r.get("file")]
+                snippets = [r.get("entry", "")[:100] for r in raw_results]
+                tracker.record_source(
+                    tool_name=self.name,
+                    success=True,
+                    sources=source_files,
+                    snippets=snippets,
+                )
 
             return ToolResult(
                 tool_name=self.name,

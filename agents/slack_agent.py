@@ -95,6 +95,9 @@ from slack_bot.tools.builtin.facts_tool import (
 )
 from slack_bot.tools.builtin.facts_check_skill import FactsCheckSkill
 from slack_bot.mission_manager import MissionManager
+from slack_bot.hooks.source_tracker import SourceTracker, set_tracker, clear_tracker
+from slack_bot.hooks.citation_hook import citation_hook
+from slack_bot.hooks.intent_classifier import intent_classifier_hook
 from slack_bot.tools.mcp.mcp_manager import MCPManager
 from slack_bot.tools_ui import build_tools_ui, parse_tool_toggle_action
 from slack_bot.facts_ui import build_facts_ui, build_fact_edit_view
@@ -346,6 +349,10 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
             "pre_process": [],    # async (event: dict, agent: SlackAgent) → None
             "post_process": [],   # async (response: str, event: dict, agent: SlackAgent) → str|None
         }
+        
+        # Register built-in hooks
+        self.register_hook("pre_process", intent_classifier_hook)
+        self.register_hook("post_process", citation_hook)
 
         # Feature flags
         self.enable_file_attachments = config.get("enable_file_attachments", True)
@@ -2018,6 +2025,10 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
         """
         start_time = datetime.now()
 
+        # Initialize source tracker for this request
+        tracker = SourceTracker()
+        set_tracker(tracker)
+
         # Run pre-process hooks (Phase 7)
         hook_event = {
             "user_id": user_id,
@@ -2280,6 +2291,9 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
 
         # Run post-process hooks (Phase 7) — may modify response
         response = await self._run_post_process_hooks(response, hook_event)
+
+        # Clean up source tracker
+        clear_tracker()
 
         return response
 
