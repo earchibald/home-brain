@@ -2581,10 +2581,13 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
                 raise RuntimeError(f"Health check failed: {'; '.join(critical_errors)}")
 
 
-# Production mode - secrets loaded from environment variables or Vaultwarden
-if __name__ == "__main__":
-
-    # Test configuration
+def main():
+    """Main entry point for Slack agent.
+    
+    All secrets are fetched from Vaultwarden. Bootstrap credentials 
+    (VAULTWARDEN_TOKEN) must be set in environment before calling.
+    """
+    # Test configuration - non-secret values only
     config = {
         "search_url": os.getenv("SEARCH_URL", "http://nuc-1.local:9514"),
         "ollama_url": os.getenv("OLLAMA_URL", "http://m1-mini.local:11434"),
@@ -2614,3 +2617,8 @@ if __name__ == "__main__":
         asyncio.run(agent.run())
     except KeyboardInterrupt:
         print("\n👋 Slack agent stopped")
+
+
+# Production mode - secrets loaded from Vaultwarden
+if __name__ == "__main__":
+    main()

@@ -187,25 +187,25 @@ Opens a modal with:
 
 **Why:** NUC-2 has pre-existing files that are NOT in the git repository:
 - `venv/` - Python virtual environment (created during bootstrap)
-- `secrets.env` - Encrypted secrets file (handled separately, not in repo)
+- `.vaultwarden` - Bootstrap credentials for Vaultwarden access (NOT secrets.env!)
 - `~/.brain-facts-*.json` - Per-user facts data (generated at runtime)
 
 **Safe deployment command:**
 ```bash
-rsync -avz --exclude venv --exclude secrets.env --exclude ".brain-facts*" \
+rsync -avz --exclude venv --exclude .vaultwarden --exclude ".brain-facts*" \
   /Users/earchibald/LLM/implementation/ nuc-2:/home/earchibald/agents/
 ```
 
 **What happened when --delete was used:** (Lesson from deployment issues)
 - `--delete` synchronized deletion of files not in local repo
-- This removed venv/ and secrets.env from NUC-2
+- This removed venv/ and .vaultwarden from NUC-2
 - Service failed on restart with exit code 127 (python3 not found)
-- Had to manually recreate venv and restore secrets.env
+- Had to manually recreate venv and restore .vaultwarden credentials
 
 **Post-deploy verification:**
 ```bash
 ssh nuc-2 "ls -la /home/earchibald/agents/venv && \
-  test -f /home/earchibald/agents/secrets.env && \
+  test -f /home/earchibald/agents/.vaultwarden && \
   echo 'Deployment OK' || echo 'MISSING FILES'"
 ```
 

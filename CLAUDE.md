@@ -1,75 +1,55 @@
 # Claude Code Instructions for /Users/earchibald/LLM/implementation
 
-## CRITICAL: secrets.env Handling
+## CRITICAL: Secrets Management — Vaultwarden ONLY
 
-**secrets.env is encrypted with SOPS (Age encryption). Mishandling it causes data loss.**
+**ALL secrets MUST be stored in Vaultwarden. There is NO secrets.env file.**
 
-### Setup
-Before ANY sops operation, source the .env file to load the age key:
+### The Rule
+- ✅ Use `VaultwardenClient.get_secret()` or `get_secret()` from clients.vaultwarden_client
+- ✅ Store all secrets in Vaultwarden vault at https://vault.nuc-1.local
+- ✅ Bootstrap credentials in `~/.vaultwarden` on each NUC (contains VAULTWARDEN_TOKEN only)
+- ❌ NEVER use secrets.env (deprecated, does not exist)
+- ❌ NEVER use `os.getenv()` for secrets
+- ❌ NEVER hardcode tokens in source or config files
+
+### Bootstrap Setup
+Each NUC has a bootstrap file with Vaultwarden credentials only:
+
 ```bash
-source /Users/earchibald/LLM/implementation/.env
+# File: /home/earchibald/agents/.vaultwarden (mode 0600)
+VAULTWARDEN_URL=https://vault.nuc-1.local/api
+VAULTWARDEN_TOKEN=your-access-token
+VAULTWARDEN_CLIENT_ID=user.xxx        # Optional, enables auto-refresh
+VAULTWARDEN_CLIENT_SECRET=xxx          # Optional, enables auto-refresh
 ```
 
-### Safe Update Pattern
-**ALWAYS use `sops set` to add/modify vars — this is the safest method:**
+### Adding Secrets
+1. Login to Vaultwarden web UI: https://vault.nuc-1.local
+2. Create a new "Secure Note" item
+3. Set the name to the secret key (e.g., `SLACK_BOT_TOKEN`)
+4. Put the value in the Notes field
+5. Save
 
-```bash
-source .env
-sops set secrets.env '["NEW_VAR"]' '"new_value"'
+### Accessing Secrets in Code
+```python
+from clients.vaultwarden_client import get_secret
+
+# Fetch from Vaultwarden - raises SecretNotFoundError if missing
+token = get_secret("SLACK_BOT_TOKEN")
+
+# With fallback default (still fetches from Vaultwarden first)
+url = get_secret("OPTIONAL_URL", default="http://localhost")
 ```
-
-Example:
-```bash
-source .env
-sops set secrets.env '["BILLING_NOTIFICATIONS_TOPIC"]' '"billing-notifications-uuid-here"'
-```
-
-Verify it worked:
-```bash
-sops -d secrets.env
-```
-
-### Alternative: Decrypt → Edit → Re-encrypt (if needed for bulk changes)
-If you need to add many vars at once:
-
-1. **Backup first:**
-   ```bash
-   cp secrets.env secrets.env.backup
-   ```
-
-2. **Decrypt:**
-   ```bash
-   source .env
-   sops -d secrets.env > /tmp/secrets_plain.env
-   ```
-
-3. **Edit plaintext:**
-   ```bash
-   echo "NEW_VAR=value" >> /tmp/secrets_plain.env
-   cat /tmp/secrets_plain.env  # Verify
-   ```
-
-4. **Use `sops set` for each line** (safer than trying to re-encrypt):
-   ```bash
-   source .env
-   while IFS='=' read -r key value; do
-     sops set secrets.env "[\"$key\"]" "\"$value\""
-   done < /tmp/secrets_plain.env
-   rm /tmp/secrets_plain.env
-   ```
 
 ### DO NOT DO THIS
-- ❌ Try to `sops -e` on a plaintext file (creates corrupt encrypted files)
-- ❌ Try to `sops -e -i` on a file without SOPS metadata
-- ❌ Pipe `sops -d` to `sops -e` directly
-- ❌ Use editor mode (`sops secrets.env`) — it requires a terminal
-- ❌ Forget to `source .env` before running sops commands
-- ❌ Run sops commands from a different directory (rules are path-relative)
+- ❌ Create a secrets.env file
+- ❌ Use SOPS for secret encryption (we use Vaultwarden)
+- ❌ Store API keys in environment variables
+- ❌ Fall back to `os.getenv()` if Vaultwarden fails
 
-### Backup Recovery
-If you corrupt secrets.env:
+### Getting Vaultwarden Credentials
 ```bash
-cp secrets.env.backup secrets.env
+ssh nuc-1 cat /home/earchibald/agents/.vaultwarden
 ```
 
 ---
@@ -103,7 +83,7 @@ All have passwordless sudo for `earchibald` user.
 
 NUC-2 contains files that are NOT in the git repository:
 - `venv/` — Python virtual environment created during bootstrap (required for service to run)
-- `secrets.env` — Encrypted secrets file ignored by gitignore, essential for runtime
+- `.vaultwarden` — Bootstrap credentials for Vaultwarden access
 - `~/.brain-facts-*.json` — Per-user facts data generated at runtime
 - Service state files from systemd
 
@@ -111,7 +91,7 @@ NUC-2 contains files that are NOT in the git repository:
 Use rsync with explicit exclusions:
 
 ```bash
-rsync -avz --exclude venv --exclude secrets.env --exclude ".brain-facts*" \
+rsync -avz --exclude venv --exclude .vaultwarden --exclude ".brain-facts*" \
   /Users/earchibald/LLM/implementation/ nuc-2:/home/earchibald/agents/
 ```
 
@@ -120,7 +100,7 @@ Always verify that critical files still exist:
 
 ```bash
 ssh nuc-2 "ls -la /home/earchibald/agents/venv && \
-  test -f /home/earchibald/agents/secrets.env && \
+  test -f /home/earchibald/agents/.vaultwarden && \
   echo '✅ Deployment OK' || echo '❌ MISSING CRITICAL FILES'"
 ```
 
@@ -128,31 +108,11 @@ ssh nuc-2 "ls -la /home/earchibald/agents/venv && \
 
 During Phase 6-7 deployment, rsync with `--delete` was used which caused:
 1. `venv/` was deleted (not in local repo)
-2. `secrets.env` was deleted (in gitignore, not in repo)
+2. `.vaultwarden` was deleted (not in repo)
 3. Service failed to restart with exit code 127 (python3: command not found)
-4. Manual intervention required to recreate venv and restore secrets.env
+4. Manual intervention required to recreate venv and restore credentials
 
 This is why the exclusion pattern is now mandatory for NUC-2 deployments.
-
----
-
-## CRITICAL: Secrets Management — Vaultwarden Only
-
-**ALL secrets and tokens MUST be stored in Vaultwarden exclusively.**
-
-- **NO environment variable fallback** — If a secret isn't in Vaultwarden, the code must fail loudly
-- **NO tokens in `.env` files, config files, or hardcoded in source**
-- **NO `os.getenv()` for secrets** — Always use `VaultwardenClient.get_secret()`
-- Vaultwarden credentials are at: `ssh nuc-1 cat /home/earchibald/agents/.vaultwarden`
-- Vaultwarden URL: `https://vault.nuc-1.local/api`
-
-### Slack Token Inventory (all in Vaultwarden)
-- `SLACK_BOT_TOKEN` — Bot OAuth token (xoxb-) for Brain Assistant
-- `SLACK_APP_TOKEN` — App-level token (xapp-) for Socket Mode
-- `SLACK_USER_TOKEN` — User OAuth token (xoxp-) for programmatic DM access
-- `BRAIN_BOT_USER_ID` — Brain Assistant's Slack user ID
-- `SLACK_CONFIG_ACCESS_TOKEN` — Slack App Manifest API access token (12hr expiry)
-- `SLACK_CONFIG_REFRESH_TOKEN` — Refresh token for rotating the config access token
 
 ---
 
