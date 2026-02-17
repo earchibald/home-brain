@@ -97,6 +97,45 @@ All have passwordless sudo for `earchibald` user.
 
 ---
 
+## Deployment to NUC-2: rsync Safety — CRITICAL
+
+**NEVER use `rsync --delete` when deploying to NUC-2. This will delete pre-existing files.**
+
+NUC-2 contains files that are NOT in the git repository:
+- `venv/` — Python virtual environment created during bootstrap (required for service to run)
+- `secrets.env` — Encrypted secrets file ignored by gitignore, essential for runtime
+- `~/.brain-facts-*.json` — Per-user facts data generated at runtime
+- Service state files from systemd
+
+### Safe Deployment
+Use rsync with explicit exclusions:
+
+```bash
+rsync -avz --exclude venv --exclude secrets.env --exclude ".brain-facts*" \
+  /Users/earchibald/LLM/implementation/ nuc-2:/home/earchibald/agents/
+```
+
+### After Deployment
+Always verify that critical files still exist:
+
+```bash
+ssh nuc-2 "ls -la /home/earchibald/agents/venv && \
+  test -f /home/earchibald/agents/secrets.env && \
+  echo '✅ Deployment OK' || echo '❌ MISSING CRITICAL FILES'"
+```
+
+### Lesson Learned: What happens with `--delete`
+
+During Phase 6-7 deployment, rsync with `--delete` was used which caused:
+1. `venv/` was deleted (not in local repo)
+2. `secrets.env` was deleted (in gitignore, not in repo)
+3. Service failed to restart with exit code 127 (python3: command not found)
+4. Manual intervention required to recreate venv and restore secrets.env
+
+This is why the exclusion pattern is now mandatory for NUC-2 deployments.
+
+---
+
 ## CRITICAL: Secrets Management — Vaultwarden Only
 
 **ALL secrets and tokens MUST be stored in Vaultwarden exclusively.**

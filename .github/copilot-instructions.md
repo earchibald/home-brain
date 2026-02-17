@@ -181,6 +181,34 @@ Opens a modal with:
 4. Ensure all unit + integration tests pass after your fix
 5. Keep changes minimal and focused on the fix
 
+## Deployment to NUC-2: rsync Safety
+
+**CRITICAL:** When deploying to NUC-2 via rsync, NEVER use the `--delete` flag.
+
+**Why:** NUC-2 has pre-existing files that are NOT in the git repository:
+- `venv/` - Python virtual environment (created during bootstrap)
+- `secrets.env` - Encrypted secrets file (handled separately, not in repo)
+- `~/.brain-facts-*.json` - Per-user facts data (generated at runtime)
+
+**Safe deployment command:**
+```bash
+rsync -avz --exclude venv --exclude secrets.env --exclude ".brain-facts*" \
+  /Users/earchibald/LLM/implementation/ nuc-2:/home/earchibald/agents/
+```
+
+**What happened when --delete was used:** (Lesson from deployment issues)
+- `--delete` synchronized deletion of files not in local repo
+- This removed venv/ and secrets.env from NUC-2
+- Service failed on restart with exit code 127 (python3 not found)
+- Had to manually recreate venv and restore secrets.env
+
+**Post-deploy verification:**
+```bash
+ssh nuc-2 "ls -la /home/earchibald/agents/venv && \
+  test -f /home/earchibald/agents/secrets.env && \
+  echo 'Deployment OK' || echo 'MISSING FILES'"
+```
+
 ## CRITICAL: Agent Notification Protocol
 
 **Before ending active work for any reason**, post a notification to alert that work has concluded:
