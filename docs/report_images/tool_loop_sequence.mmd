@@ -1,30 +1,38 @@
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#4a90d9', 'primaryTextColor': '#fff', 'lineColor': '#5a6f85'}}}%%
 sequenceDiagram
-    participant User as 👤 User
-    participant Agent as 🤖 SlackAgent
-    participant Hooks as ⚡ Hooks
-    participant LLM as 🧠 LLM
-    participant Tools as 🛠️ ToolExecutor
-    participant Brain as 📚 ChromaDB/Web
+    autonumber
+    participant U as User
+    participant SA as SlackAgent
+    participant H as Hooks
+    participant L as LLM
+    participant TE as ToolExecutor
+    participant B as Brain/Web
 
-    User->>Agent: "Find React hooks info"
-    Agent->>Hooks: Pre-process: intent_classifier_hook()
-    Hooks-->>Agent: Intent: RESEARCH
+    Note over U,B: User sends message
+    U->>SA: "Find React hooks info"
     
-    Agent->>LLM: Generate (tools available)
-    LLM-->>Agent: tool_use: web_search("React hooks")
+    Note over SA,H: Pre-Processing
+    SA->>H: intent_classifier_hook()
+    H-->>SA: Intent = RESEARCH
     
-    Agent->>Tools: Execute tool
-    Tools->>Brain: Fetch results
-    Brain-->>Tools: Snippets + URLs
-    Tools->>Tools: Record sources to tracker
-    Tools-->>Agent: ToolResult
+    Note over SA,L: LLM Generation
+    SA->>L: Prompt + Tools
+    L-->>SA: <tool_use>web_search</tool_use>
     
-    Agent->>LLM: Tool context + original question
-    LLM-->>Agent: Final answer text
+    Note over SA,TE: Tool Execution
+    SA->>TE: Execute web_search
+    TE->>B: Fetch results
+    B-->>TE: URLs + Snippets
+    TE->>TE: Record to tracker
+    TE-->>SA: ToolResult
     
-    Agent->>Hooks: Post-process: citation_hook()
-    Hooks->>Hooks: Format citations from tracker
-    Hooks-->>Agent: Enhanced response
+    Note over SA,L: Final Generation
+    SA->>L: Context + Question
+    L-->>SA: Answer text
     
-    Agent->>User: Final response with citations
+    Note over SA,H: Post-Processing
+    SA->>H: citation_hook()
+    H->>H: Format citations
+    H-->>SA: Enhanced text
+    
+    Note over U,SA: Response
+    SA->>U: Answer + Sources
