@@ -225,19 +225,44 @@ class SlackAgent(Agent):
             "system_prompt",
             """You are Brain Assistant, Eugene's personal AI companion. Your default name is "Brain Assistant" but Eugene may give you a nickname — when he does, adopt it as YOUR name (e.g., "I'd like to call you Archie" means YOU are now Archie, not the user).
 
+## Identity — THIS IS CRITICAL
+
+There are exactly two entities in this conversation:
+- **The human** = Eugene (the user typing messages)
+- **The AI assistant** = You (Brain Assistant, or whatever nickname Eugene gives you)
+
+When Eugene says "I'll call you Archie", that means:
+- YOUR name is now Archie (you are the AI)
+- Eugene's name is still Eugene (he is the human)
+- CORRECT response: "Got it, I'm Archie! How can I help, Eugene?"
+- WRONG response: "Nice to meet you, Eugene (aka Archie)" ← NO, Eugene is NOT Archie
+
+When Eugene says "My name is Eugene":
+- The HUMAN's name is Eugene
+- YOUR name is whatever it was before
+
+Never confuse who is who. "You" in Eugene's messages = the AI. "I/me" in Eugene's messages = Eugene.
+
 ## Your Two Knowledge Sources
 
 1. **Conversation Memory** (PRIMARY) — What Eugene told you in this conversation. Always prioritize this. If Eugene says his project is called "Project Nova", remember it — even if your notes mention different projects.
 
 2. **Brain (Knowledge Base)** (SECONDARY) — Eugene's notes, journals, documents. Use to enrich answers, but never override what Eugene just said.
 
-## Core Behaviors
+## Your Capabilities
 
-**Identity & Memory:**
-- If Eugene gives you a name ("call you X", "your name is X", "let's call you X"), YOU adopt that name — you are X
-- If Eugene introduces himself ("I'm Eugene", "my name is X"), remember THEIR name
-- Remember facts, preferences, projects, and decisions shared in conversation
-- Refer back naturally: "Earlier you mentioned...", "As you've called me..."
+You have these real capabilities (powered by tools that run automatically):
+- **Brain search** — I can search Eugene's personal knowledge base (markdown notes, journals, documents) for relevant context
+- **Web search** — I can search the internet for current information, facts, news, and real-world data
+- **Conversation memory** — I remember everything said in this conversation, plus I can recall relevant past conversations
+- **File analysis** — When Eugene uploads a file, I can read and analyze its contents
+- **Save to brain** — I can help save important information to Eugene's knowledge base
+
+Slash commands Eugene can use: `/model` (switch AI models), `/apikey` (manage API keys), `/reset` (clear conversation), `/index` (manage knowledge base)
+
+IMPORTANT: Only claim you performed an action if the [Actions taken] note in context confirms it. If web_search=no, do NOT say "I searched the web" — instead say "I don't have web search results for this" or just answer from your knowledge.
+
+## Core Behaviors
 
 **Conversation First:**
 - Build on prior exchanges, don't restart each message
@@ -253,7 +278,8 @@ class SlackAgent(Agent):
 - Concise, direct, use bullets for lists
 - Warm but not sycophantic
 - Ask clarifying questions when genuinely uncertain
-- If Eugene uploads a file, analyze it directly""",
+- If Eugene uploads a file, analyze it directly
+- Do NOT append "Notes so far:" to every message — only provide session summaries when Eugene explicitly asks for them""",
         )
 
         # Initialize performance monitoring
@@ -580,6 +606,14 @@ class SlackAgent(Agent):
             """Handle @mentions (future: support channel conversations)"""
             await say("Hi! For now, please DM me directly for conversations.")
 
+        def _load_user_gemini_key(self_ref, user_id: str) -> bool:
+            """Load user's Gemini API key into the provider. Returns True if key exists."""
+            gemini_key = self_ref.api_key_store.get_key(user_id, "gemini")
+            if gemini_key and "gemini" in self_ref.model_manager.providers:
+                self_ref.model_manager.providers["gemini"].set_api_key(gemini_key)
+                return True
+            return False
+
         @self.app.command("/model")
         async def handle_model_command(ack, respond, command):
             """Handle /model command for dynamic model switching"""
@@ -593,24 +627,73 @@ class SlackAgent(Agent):
                 return
 
             try:
+                user_id = command["user_id"]
+
                 # Refresh provider discovery with configured Ollama URL
                 self.model_manager.discover_available_sources(ollama_url=self.ollama_url)
 
-                # Build UI
-                blocks = build_model_selector_ui(self.model_manager)
+                # Load user's Gemini API key into provider
+                gemini_configured = _load_user_gemini_key(self, user_id)
+
+                # Build UI (no provider pre-selected on initial load)
+                blocks = build_model_selector_ui(
+                    self.model_manager,
+                    gemini_configured=gemini_configured,
+                )
 
                 await respond(
                     text="Model Selection",
                     blocks=blocks,
                     response_type="ephemeral",
                 )
-                self.logger.info(f"User {command['user_id']} opened /model UI")
+                self.logger.info(f"User {user_id} opened /model UI (gemini_configured={gemini_configured})")
 
             except Exception as e:
                 self.logger.error(f"Error handling /model command: {e}", exc_info=True)
                 await respond(
                     text=f"⚠️ Error loading model selector: {str(e)}",
                     response_type="ephemeral",
+                )
+
+        @self.app.action("select_provider")
+        async def handle_provider_selection(ack, body, action, respond):
+            """Handle provider selection - dynamically rebuild model list for chosen provider."""
+            await ack()
+
+            if not self.enable_model_switching:
+                return
+
+            try:
+                selected_provider_id = action["selected_option"]["value"]
+                user_id = body["user"]["id"]
+
+                # Load user's Gemini API key
+                gemini_configured = _load_user_gemini_key(self, user_id)
+
+                # Rebuild UI with only the selected provider's models
+                blocks = build_model_selector_ui(
+                    self.model_manager,
+                    selected_provider_id=selected_provider_id,
+                    gemini_configured=gemini_configured,
+                )
+
+                await respond(
+                    text="Model Selection",
+                    blocks=blocks,
+                    response_type="ephemeral",
+                    replace_original=True,
+                )
+                self.logger.info(
+                    f"User {user_id} selected provider: {selected_provider_id} "
+                    f"(gemini_configured={gemini_configured})"
+                )
+
+            except Exception as e:
+                self.logger.error(f"Error handling provider selection: {e}", exc_info=True)
+                await respond(
+                    text=f"⚠️ Error: {str(e)}",
+                    response_type="ephemeral",
+                    replace_original=False,
                 )
 
         @self.app.action("select_model")
@@ -782,6 +865,207 @@ class SlackAgent(Agent):
             await client.chat_postMessage(
                 channel=user_id,
                 text="🗑️ Your Gemini API key has been deleted."
+            )
+
+        # ==================================================================
+        # /reset command - Delete conversation history (triple confirmation)
+        # ==================================================================
+
+        @self.app.command("/reset")
+        async def handle_reset_command(ack, command, respond):
+            """Handle /reset command - nuke conversation history with triple confirmation."""
+            await ack()
+
+            user_id = command["user_id"]
+            channel_id = command["channel_id"]
+
+            await respond(
+                text="⚠️ *Reset Conversation Memory*",
+                blocks=[
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": (
+                                "⚠️ *Warning: This will delete ALL conversation history in this DM.*\n\n"
+                                "This includes:\n"
+                                "• All past messages and responses\n"
+                                "• Conversation context and memory\n"
+                                "• Any ongoing discussion threads\n\n"
+                                "*This action CANNOT be undone.*"
+                            ),
+                        },
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "Yes, delete history"},
+                                "style": "danger",
+                                "value": f"{user_id}:{channel_id}",
+                                "action_id": "reset_confirm_1",
+                            },
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "Cancel"},
+                                "action_id": "reset_cancel",
+                            },
+                        ],
+                    },
+                ],
+                response_type="ephemeral",
+            )
+
+        @self.app.action("reset_confirm_1")
+        async def handle_reset_confirm_1(ack, action, respond):
+            """First confirmation - show stronger warning."""
+            await ack()
+
+            user_id, channel_id = action["value"].split(":")
+
+            await respond(
+                text="⚠️ *Second Confirmation Required*",
+                blocks=[
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": (
+                                "🚨 *Are you absolutely sure?*\n\n"
+                                "Once deleted, you will lose:\n"
+                                "• All context about previous conversations\n"
+                                "• Any information I've learned about you\n"
+                                "• The ability to reference past discussions\n\n"
+                                "The conversation will restart from scratch.\n\n"
+                                "*Still want to proceed?*"
+                            ),
+                        },
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "Confirm deletion"},
+                                "style": "danger",
+                                "value": f"{user_id}:{channel_id}",
+                                "action_id": "reset_confirm_2",
+                            },
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "Cancel"},
+                                "action_id": "reset_cancel",
+                            },
+                        ],
+                    },
+                ],
+                response_type="ephemeral",
+                replace_original=True,
+            )
+
+        @self.app.action("reset_confirm_2")
+        async def handle_reset_confirm_2(ack, action, respond):
+            """Second confirmation - final warning before deletion."""
+            await ack()
+
+            user_id, channel_id = action["value"].split(":")
+
+            await respond(
+                text="🚨 *FINAL WARNING*",
+                blocks=[
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": (
+                                "🚨 *LAST CHANCE TO CANCEL*\n\n"
+                                "This is your final warning. Clicking 'DELETE' below will:\n\n"
+                                "❌ Permanently erase all conversation history\n"
+                                "❌ Remove all context and memory\n"
+                                "❌ Cannot be recovered or undone\n\n"
+                                "**This is irreversible.**\n\n"
+                                "Only proceed if you are 100% certain."
+                            ),
+                        },
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "DELETE (cannot be undone)"},
+                                "style": "danger",
+                                "value": f"{user_id}:{channel_id}",
+                                "action_id": "reset_confirm_3",
+                            },
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "Cancel"},
+                                "action_id": "reset_cancel",
+                            },
+                        ],
+                    },
+                ],
+                response_type="ephemeral",
+                replace_original=True,
+            )
+
+        @self.app.action("reset_confirm_3")
+        async def handle_reset_confirm_3(ack, action, respond):
+            """Third confirmation - actually delete the conversation."""
+            await ack()
+
+            user_id, channel_id = action["value"].split(":")
+
+            try:
+                # Delete the conversation
+                deleted = await self.conversations.delete_conversation(user_id, channel_id)
+
+                if deleted:
+                    await respond(
+                        text="✅ *Conversation history deleted*",
+                        blocks=[
+                            {
+                                "type": "section",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": (
+                                        "✅ **Conversation history has been deleted.**\n\n"
+                                        "All memory and context has been cleared.\n"
+                                        "Our next conversation will start fresh.\n\n"
+                                        "_You can continue chatting normally now._"
+                                    ),
+                                },
+                            }
+                        ],
+                        response_type="ephemeral",
+                        replace_original=True,
+                    )
+                    self.logger.info(f"User {user_id} deleted conversation in {channel_id}")
+                else:
+                    await respond(
+                        text="ℹ️ No conversation history found to delete.",
+                        response_type="ephemeral",
+                        replace_original=True,
+                    )
+
+            except Exception as e:
+                self.logger.error(f"Error deleting conversation: {e}", exc_info=True)
+                await respond(
+                    text=f"⚠️ Error deleting conversation: {str(e)}",
+                    response_type="ephemeral",
+                    replace_original=True,
+                )
+
+        @self.app.action("reset_cancel")
+        async def handle_reset_cancel(ack, respond):
+            """Handle cancellation of reset."""
+            await ack()
+            await respond(
+                text="✅ Cancelled - conversation history preserved.",
+                response_type="ephemeral",
+                replace_original=True,
             )
 
         # ==================================================================
@@ -1296,8 +1580,24 @@ class SlackAgent(Agent):
             self.logger.info(
                 f"Summarizing conversation for {user_id} (thread {thread_id})"
             )
+            
+            # Create summarization function that respects current model selection
+            async def summarize_with_current_model(prompt: str) -> str:
+                """Summarize using the currently selected model."""
+                from clients.llm_client import Message
+                messages = [Message(role="user", content=prompt)]
+                response, model_used, _ = await self._generate_with_provider(
+                    messages=messages,
+                    user_id=user_id,
+                    say_func=None,  # Don't notify on summarization
+                )
+                self.logger.info(f"Summarized conversation with {model_used}")
+                return response
+            
             history = await self.conversations.summarize_if_needed(
-                history, max_tokens=self.summarization_threshold
+                history,
+                max_tokens=self.summarization_threshold,
+                summarize_fn=summarize_with_current_model,
             )
 
         # ---- NEW: Search past conversations for relevant context ----
@@ -1422,6 +1722,15 @@ class SlackAgent(Agent):
                 content=f"[Supplementary context — use only if relevant to the user's message]\n{full_context}"
             ))
 
+        # Inject action metadata so the LLM knows what actually happened
+        # This prevents the LLM from claiming it searched when it didn't
+        action_note = (
+            f"[Actions taken: brain_search={'yes' if context else 'no'}, "
+            f"web_search={'yes' if web_context else 'no'}, "
+            f"past_conversations={'yes' if past_context else 'no'}]"
+        )
+        messages.append(Message(role="system", content=action_note))
+
         messages.append(Message(role="user", content=text))
 
         # Generate response using provider-aware method
@@ -1533,6 +1842,18 @@ class SlackAgent(Agent):
             "how do i ", "how to ",
             "search the web", "google ",
             "look up", "find out",
+            # Broader factual query patterns
+            "top 3", "top 5", "top 10", "best ",
+            "list of ", "examples of ", "list the ",
+            "can you search", "can you find", "find me",
+            "what are the", "what were the",
+            "episodes of", "season ", "cast of",
+            "recipe for", "ingredients for",
+            "price of", "cost of", "value of",
+            "reviews of", "rating of",
+            "history of", "origin of",
+            "compare ", "difference between",
+            "vs ", " versus ",
         ]
         
         # Keywords suggesting personal context (prefer brain search only)
