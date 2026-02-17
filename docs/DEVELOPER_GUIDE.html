@@ -215,6 +215,17 @@ journalctl -u brain-slack-bot -f  # Watch live logs</code></pre>
         <li>Update the UI definitions in <code>slack_bot/facts_ui.py</code>.</li>
     </ul>
 
+    <h3>Model Persistence Architecture</h3>
+    <p><strong>Storage:</strong> The bot uses <code>ModelPreferenceStore</code> to persist per-user model selections across restarts.</p>
+    <ul>
+        <li><strong>Storage File:</strong> <code>~/.brain-model-prefs.json</code> on NUC-2 (0600 permissions).</li>
+        <li><strong>Format:</strong> <code>{"user_id": {"provider_id": "gemini", "model_name": "gemini-1.5-flash"}}</code></li>
+        <li><strong>Load Mechanism:</strong> Preferences are loaded in <code>_generate_with_provider()</code> before each LLM generation.</li>
+        <li><strong>Save Mechanism:</strong> Preferences are saved in <code>handle_model_selection()</code> when user changes models via <code>/model</code>.</li>
+        <li><strong>Graceful Degradation:</strong> If stored provider/model is unavailable, falls back to default Ollama.</li>
+    </ul>
+    <p><strong>Implementation Pattern:</strong> ModelPreferenceStore mirrors ApiKeyStore for consistency—both use secure JSON storage with 0600 file permissions.</p>
+
     <h2>6. Deployment Pipeline</h2>
     
     <div class="img-container">

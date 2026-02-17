@@ -5,9 +5,10 @@ Get your semantic brain connected to Slack in 30 minutes.
 ## What You'll Build
 
 A Slack bot that:
-- **Responds to Slack DMs** using llama3.2 
+- **Responds to Slack DMs** using llama3.2 or Gemini (your choice)
 - **Searches your brain** for relevant context before answering
 - **Remembers conversations** with automatic history management
+- **Remembers your model preference** - selections persist across restarts
 - **Isolates users** - each person gets their own brain folder
 - **Runs 24/7** as a systemd service on NUC-2
 
