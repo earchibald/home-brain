@@ -28,7 +28,7 @@ SECRETS_TO_MIGRATE = {
     "GOOGLE_API_KEY": "Google API key for Gemini",
 
     # Service URLs (optional, but good to centralize)
-    "KHOJ_URL": "Khoj server URL (default: http://nuc-1.local:42110)",
+    "SEARCH_URL": "Semantic search service URL (default: http://nuc-1.local:9514)",
     "OLLAMA_URL": "Ollama server URL (default: http://m1-mini.local:11434)",
 }
 

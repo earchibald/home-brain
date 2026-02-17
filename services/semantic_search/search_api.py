@@ -1,11 +1,12 @@
 """FastAPI service for semantic search API."""
-from fastapi import FastAPI, Query, HTTPException, Path as PathParam
+from fastapi import FastAPI, Query, HTTPException, Path as PathParam, File, UploadFile, Form
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional, Any
 import logging
 import asyncio
 import os
+import re
 import aiohttp
 
 from .embedder import OllamaEmbedder
@@ -367,6 +368,143 @@ async def delete_document(file_path: str):
 
 
 # ======================================================================
+# File Upload Endpoint
+# ======================================================================
+
+
+def _sanitize_path(path: str) -> str:
+    """Sanitize file path to prevent traversal attacks.
+    
+    Raises:
+        ValueError: If path is invalid or dangerous
+    """
+    # Remove leading/trailing slashes and whitespace
+    path = path.strip().strip("/")
+    
+    # Split into components
+    parts = path.split("/")
+    
+    # Check each component
+    clean_parts = []
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if part in (".", ".."):
+            raise ValueError(f"Invalid path component: {part}")
+        if part.startswith("."):
+            raise ValueError(f"Hidden files/directories not allowed: {part}")
+        # Allow alphanumeric, hyphens, underscores, dots (for extensions)
+        if not re.match(r'^[\w\-\.]+$', part):
+            raise ValueError(f"Invalid characters in path: {part}")
+        clean_parts.append(part)
+    
+    if not clean_parts:
+        raise ValueError("Empty path")
+    
+    if len(clean_parts) > 5:
+        raise ValueError("Path too deep: max 5 directory levels")
+    
+    return "/".join(clean_parts)
+
+
+# Max upload size: 10MB
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024
+
+
+@app.post("/api/documents/upload")
+async def upload_document(
+    file_path: str = Form(..., description="Target path relative to brain root (e.g., 'notes/meeting.md')"),
+    file: UploadFile = File(..., description="File to upload"),
+    overwrite: bool = Form(False, description="Overwrite if file exists"),
+):
+    """Upload a file to the brain and trigger indexing.
+    
+    - Creates parent directories if they don't exist
+    - Respects directory gates (cannot upload to readonly directories)
+    - Triggers immediate indexing of the uploaded file
+    """
+    if not index_control or not vector_store or not indexer:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    # Sanitize and validate path
+    try:
+        clean_path = _sanitize_path(file_path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Check gate permissions
+    if not index_control.can_delete_file(clean_path):  # Same logic: readonly = no write
+        raise HTTPException(
+            status_code=403,
+            detail=f"Directory is read-only. Cannot upload to this location.",
+        )
+
+    # Read file content (with size limit)
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024*1024)}MB.",
+        )
+
+    # Build absolute path
+    from pathlib import Path as _Path
+    abs_path = _Path(CONFIG["brain_path"]) / clean_path
+
+    # Check if file exists
+    if abs_path.exists() and not overwrite:
+        raise HTTPException(
+            status_code=409,
+            detail=f"File already exists. Set overwrite=true to replace.",
+        )
+
+    # Create parent directories
+    abs_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Write file
+    try:
+        abs_path.write_bytes(content)
+        logger.info(f"Uploaded file: {abs_path} ({len(content)} bytes)")
+    except Exception as e:
+        logger.error(f"Failed to write file {abs_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to write file: {e}")
+
+    # Trigger indexing
+    chunks_indexed = 0
+    indexed = False
+    try:
+        success = await indexer.index_file(abs_path)
+        if success:
+            indexed = True
+            # Get chunk count from vector store
+            from .indexer import DocumentProcessor
+            text = DocumentProcessor.read_file(abs_path)
+            if text:
+                chunks_indexed = len(DocumentProcessor.chunk_text(text))
+        
+        # Register in index control
+        index_control.register_file(
+            clean_path,
+            mtime=abs_path.stat().st_mtime,
+            size=len(content),
+            chunks=chunks_indexed,
+        )
+        index_control.persist_registry()
+    except Exception as e:
+        logger.error(f"Indexing failed for {clean_path}: {e}")
+        # File is saved, indexing will happen on next scan
+
+    return {
+        "status": "uploaded",
+        "path": clean_path,
+        "size": len(content),
+        "chunks": chunks_indexed,
+        "indexed": indexed,
+    }
+
+
+# ======================================================================
 # Gate Configuration Endpoints
 # ======================================================================
 
@@ -484,4 +622,4 @@ if __name__ == "__main__":
     )
     
     # Run the service
-    uvicorn.run(app, host="0.0.0.0", port=42110)
+    uvicorn.run(app, host="0.0.0.0", port=9514)

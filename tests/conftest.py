@@ -155,21 +155,21 @@ def mock_llm() -> AsyncMock:
 
 
 # ============================================================================
-# Khoj Client Mocks
+# Semantic Search Client Mocks
 # ============================================================================
 
 
 @pytest.fixture
-def mock_khoj() -> AsyncMock:
+def mock_search() -> AsyncMock:
     """
-    Mock Khoj client with async search() method.
+    Mock semantic search client with async search() method.
 
-    Provides an AsyncMock that simulates the Khoj client's interface,
+    Provides an AsyncMock that simulates the SemanticSearchClient interface,
     including search() and health_check() methods. Returns realistic
     search results with proper metadata (entry, score, file path, heading).
 
     Returns:
-        AsyncMock: Mock Khoj client returning sample search results
+        AsyncMock: Mock search client returning sample search results
     """
     mock = AsyncMock()
     mock.search.return_value = [

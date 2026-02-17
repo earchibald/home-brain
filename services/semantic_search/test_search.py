@@ -17,7 +17,7 @@ async def test_service():
     print("=" * 60)
     
     # Initialize client
-    client = SemanticSearchClient(base_url="http://nuc-1.local:42110")
+    client = SemanticSearchClient(base_url="http://nuc-1.local:9514")
     
     try:
         # Test 1: Health Check

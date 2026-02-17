@@ -19,7 +19,7 @@ COPY . /app/services/semantic_search/
 ENV PYTHONPATH=/app
 
 # Expose port
-EXPOSE 42110
+EXPOSE 9514
 
 # Run the service
 CMD ["python", "-m", "services.semantic_search.search_api"]

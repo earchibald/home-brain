@@ -29,7 +29,7 @@ def run_challenge():
         "The semantic search service uses ChromaDB with nomic-embed-text embeddings. It indexes markdown, PDF, and text files from the brain folder.",
         "Syncthing keeps the brain folder synchronized across all three NUCs. NUC-3 is the introducer node. The folder ID is qknir-pp3n7.",
         "For notifications, I use ntfy.sh with a topic for alerts. All NUCs have a notify.sh script that sends alerts on service failures.",
-        "The Slack bot uses slack-bolt with Socket Mode. It connects to Khoj for brain search and Ollama for inference. Conversations are stored in JSON and cxdb.",
+        "The Slack bot uses slack-bolt with Socket Mode. It connects to semantic search for brain search and Ollama for inference. Conversations are stored in JSON and cxdb.",
         "Now, given everything I've told you about my setup, what would happen if NUC-1 went offline?",
     ]
 
@@ -53,7 +53,7 @@ def run_challenge():
 
     # The bot should mention consequences of NUC-1 going offline
     # based on the architecture described in earlier turns
-    keywords = ["search", "semantic", "orchestrat", "khoj", "chromadb"]
+    keywords = ["search", "semantic", "orchestrat", "chromadb"]
     found = [k for k in keywords if k in final]
 
     if len(found) >= 2:

@@ -2,18 +2,28 @@
 Slack Block Kit UI builder for model selection.
 
 Provides helper functions for the /model command UI.
+Supports dynamic provider-based model filtering.
 """
 
-from typing import List, Dict
+import logging
+from typing import List, Dict, Optional
 from services.model_manager import ModelManager
 
+logger = logging.getLogger(__name__)
 
-def build_model_selector_ui(manager: ModelManager) -> List[Dict]:
+
+def build_model_selector_ui(
+    manager: ModelManager,
+    selected_provider_id: Optional[str] = None,
+    gemini_configured: bool = False,
+) -> List[Dict]:
     """
     Build Block Kit UI for model selection.
 
     Args:
         manager: ModelManager instance
+        selected_provider_id: If set, only show models for this provider
+        gemini_configured: Whether the current user has a Gemini API key
 
     Returns:
         list: Block Kit blocks for the UI
@@ -55,53 +65,56 @@ def build_model_selector_ui(manager: ModelManager) -> List[Dict]:
         )
         return blocks
 
-    # Provider dropdown
+    # Provider dropdown with initial_option if provider is already selected
     provider_options = []
+    initial_provider_option = None
     for provider in available_providers:
-        provider_options.append(
-            {
-                "text": {"type": "plain_text", "text": provider["name"]},
-                "value": provider["id"],
-            }
-        )
+        option = {
+            "text": {"type": "plain_text", "text": provider["name"]},
+            "value": provider["id"],
+        }
+        provider_options.append(option)
+        if selected_provider_id and provider["id"] == selected_provider_id:
+            initial_provider_option = option
+
+    provider_accessory = {
+        "type": "static_select",
+        "action_id": "select_provider",
+        "placeholder": {"type": "plain_text", "text": "Choose provider..."},
+        "options": provider_options,
+    }
+    if initial_provider_option:
+        provider_accessory["initial_option"] = initial_provider_option
 
     blocks.append(
         {
             "type": "section",
             "text": {"type": "mrkdwn", "text": "*Select Provider:*"},
-            "accessory": {
-                "type": "static_select",
-                "action_id": "select_provider",
-                "placeholder": {"type": "plain_text", "text": "Choose provider..."},
-                "options": provider_options,
-            },
+            "accessory": provider_accessory,
         }
     )
 
-    # Model dropdown - show filtered models from all providers
+    # Determine which providers to show models for
+    if selected_provider_id:
+        show_providers = [p for p in available_providers if p["id"] == selected_provider_id]
+    else:
+        show_providers = available_providers
+
+    # Build model options for the selected (or all) providers
     model_options = []
-    for provider in available_providers:
-        # Filter models based on provider type
+    for provider in show_providers:
         models = provider["models"]
 
         # For Ollama providers, only show llama models
         if "ollama" in provider["id"].lower():
             models = [m for m in models if "llama" in m.lower()]
 
-        # For Gemini, check if it's configured
-        if provider["id"] == "gemini":
-            # Check if provider has API key set
-            gemini_provider = manager.providers.get("gemini")
-            if gemini_provider and not gemini_provider.is_configured():
-                # Show hint to configure API key
-                continue  # Skip Gemini models if not configured
+        # For Gemini, skip if user hasn't configured API key
+        if provider["id"] == "gemini" and not gemini_configured:
+            continue
 
-        # Add models with shortened names to avoid overflow
-        for model in models[:5]:  # Limit to 5 models per provider
-            # Shorten provider name for display
+        for model in models[:5]:
             provider_short = provider['name'].replace("Ollama ", "").replace(" - ", " ")
-
-            # Shorten model name if too long
             model_display = model[:30] + "..." if len(model) > 30 else model
 
             model_options.append(
@@ -114,9 +127,8 @@ def build_model_selector_ui(manager: ModelManager) -> List[Dict]:
                 }
             )
 
-    # Add Gemini API key prompt if not configured
-    gemini_provider = manager.providers.get("gemini")
-    if gemini_provider and not gemini_provider.is_configured():
+    # Add Gemini API key prompt only if not configured
+    if not gemini_configured and "gemini" in manager.providers:
         blocks.append(
             {
                 "type": "section",
@@ -136,18 +148,27 @@ def build_model_selector_ui(manager: ModelManager) -> List[Dict]:
                     "type": "static_select",
                     "action_id": "select_model",
                     "placeholder": {"type": "plain_text", "text": "Choose model..."},
-                    "options": model_options[:25],  # Slack limits to 100 options
+                    "options": model_options[:25],
                 },
             }
         )
-    else:
-        # No models available
+    elif selected_provider_id == "gemini" and not gemini_configured:
         blocks.append(
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "⚠️ No compatible models found. Install llama models on your Ollama servers.",
+                    "text": "⚠️ Gemini requires an API key. Use `/apikey` to add one first.",
+                },
+            }
+        )
+    else:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "⚠️ No compatible models found for this provider.",
                 },
             }
         )

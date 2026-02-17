@@ -1,7 +1,8 @@
 """
 Unit tests for VaultwardenClient.
 
-Tests the Vaultwarden API client with caching and fallback functionality.
+Tests the Vaultwarden API client with caching. All secrets must come
+from Vaultwarden exclusively — no environment variable fallback.
 """
 
 import os
@@ -11,13 +12,13 @@ from unittest.mock import Mock, patch, MagicMock
 import requests
 
 
-# Import will fail initially (TDD RED phase)
-try:
-    from clients.vaultwarden_client import VaultwardenClient, get_client, get_secret
-except ImportError:
-    VaultwardenClient = None
-    get_client = None
-    get_secret = None
+from clients.vaultwarden_client import (
+    VaultwardenClient,
+    get_client,
+    get_secret,
+    SecretNotFoundError,
+    VaultwardenError,
+)
 
 
 @pytest.mark.unit
@@ -34,23 +35,16 @@ class TestVaultwardenClient:
     @pytest.fixture
     def client(self, mock_session):
         """Create a VaultwardenClient instance for testing."""
-        if VaultwardenClient is None:
-            pytest.skip("VaultwardenClient not implemented yet")
-
         with patch('requests.Session', return_value=mock_session):
             client = VaultwardenClient(
                 api_url="https://vault.test/api",
                 access_token="test-token-123",
                 cache_ttl=300,
-                fallback_env=True
             )
         return client
 
     def test_client_initializes_with_credentials(self):
-        """RED: Client requires URL and token."""
-        if VaultwardenClient is None:
-            pytest.skip("VaultwardenClient not implemented yet")
-
+        """Client requires URL and token."""
         client = VaultwardenClient(
             api_url="https://vault.test/api",
             access_token="test-token"
@@ -58,13 +52,9 @@ class TestVaultwardenClient:
         assert client.api_url == "https://vault.test/api"
         assert client.access_token == "test-token"
         assert client.cache_ttl == 300  # Default
-        assert client.fallback_env is True  # Default
 
     def test_client_strips_trailing_slash_from_url(self):
-        """RED: URL should be normalized (trailing slash removed)."""
-        if VaultwardenClient is None:
-            pytest.skip("VaultwardenClient not implemented yet")
-
+        """URL should be normalized (trailing slash removed)."""
         client = VaultwardenClient(
             api_url="https://vault.test/api/",
             access_token="test-token"
@@ -72,11 +62,7 @@ class TestVaultwardenClient:
         assert client.api_url == "https://vault.test/api"
 
     def test_client_sets_authorization_header(self, mock_session):
-        """RED: Client should set Bearer token in session headers."""
-        if VaultwardenClient is None:
-            pytest.skip("VaultwardenClient not implemented yet")
-
-        # Track update calls by wrapping headers
+        """Client should set Bearer token in session headers."""
         headers_dict = {}
         mock_session.headers = headers_dict
 
@@ -86,17 +72,16 @@ class TestVaultwardenClient:
                 access_token="test-token-123"
             )
 
-        # Verify Authorization header was set
         assert 'Authorization' in headers_dict
         assert headers_dict['Authorization'] == 'Bearer test-token-123'
 
     def test_get_secret_fetches_from_api(self, client, mock_session):
-        """RED: get_secret() calls Vaultwarden API."""
+        """get_secret() calls Vaultwarden API."""
         mock_response = Mock()
         mock_response.json.return_value = {
             'data': [{
                 'name': 'TEST_KEY',
-                'type': 1,  # Type 1 = Login
+                'type': 1,
                 'login': {'password': 'secret-value'}
             }]
         }
@@ -110,18 +95,17 @@ class TestVaultwardenClient:
         assert call_args[0][0] == 'https://vault.test/api/ciphers'
         assert call_args[1]['params'] == {'search': 'TEST_KEY'}
 
-    def test_get_secret_returns_none_when_not_found(self, client, mock_session):
-        """RED: get_secret() returns None when secret doesn't exist."""
+    def test_get_secret_raises_when_not_found(self, client, mock_session):
+        """get_secret() raises SecretNotFoundError when secret doesn't exist."""
         mock_response = Mock()
         mock_response.json.return_value = {'data': []}
         mock_session.get.return_value = mock_response
 
-        value = client.get_secret('NONEXISTENT_KEY')
-
-        assert value is None
+        with pytest.raises(SecretNotFoundError):
+            client.get_secret('NONEXISTENT_KEY')
 
     def test_get_secret_returns_default_when_not_found(self, client, mock_session):
-        """RED: get_secret() returns default value when provided."""
+        """get_secret() returns default value when provided."""
         mock_response = Mock()
         mock_response.json.return_value = {'data': []}
         mock_session.get.return_value = mock_response
@@ -131,7 +115,7 @@ class TestVaultwardenClient:
         assert value == 'fallback-value'
 
     def test_get_secret_caches_values(self, client, mock_session):
-        """RED: Cached values don't trigger API calls."""
+        """Cached values don't trigger API calls."""
         mock_response = Mock()
         mock_response.json.return_value = {
             'data': [{
@@ -142,19 +126,16 @@ class TestVaultwardenClient:
         }
         mock_session.get.return_value = mock_response
 
-        # First call - should fetch from API
         value1 = client.get_secret('CACHED_KEY')
         assert value1 == 'cached-value'
         assert mock_session.get.call_count == 1
 
-        # Second call - should use cache
         value2 = client.get_secret('CACHED_KEY')
         assert value2 == 'cached-value'
         assert mock_session.get.call_count == 1  # No additional API call
 
     def test_get_secret_cache_expires(self, client, mock_session):
-        """RED: Cache expires after TTL."""
-        # Use very short TTL for testing
+        """Cache expires after TTL."""
         client.cache_ttl = 0.1  # 100ms
 
         mock_response = Mock()
@@ -167,63 +148,35 @@ class TestVaultwardenClient:
         }
         mock_session.get.return_value = mock_response
 
-        # First call
         value1 = client.get_secret('EXPIRE_KEY')
         assert value1 == 'expired-value'
         assert mock_session.get.call_count == 1
 
-        # Wait for cache to expire
         time.sleep(0.15)
 
-        # Second call - should fetch from API again
         value2 = client.get_secret('EXPIRE_KEY')
         assert value2 == 'expired-value'
         assert mock_session.get.call_count == 2
 
-    @patch.dict(os.environ, {'FALLBACK_KEY': 'env-value'})
-    def test_get_secret_falls_back_to_env(self, client, mock_session):
-        """RED: Falls back to os.getenv() if enabled and key not in Vaultwarden."""
+    def test_get_secret_no_env_fallback(self, client, mock_session):
+        """Secrets never fall back to environment variables."""
         mock_response = Mock()
         mock_response.json.return_value = {'data': []}
         mock_session.get.return_value = mock_response
 
-        value = client.get_secret('FALLBACK_KEY')
+        with patch.dict(os.environ, {'SOME_KEY': 'env-value'}):
+            with pytest.raises(SecretNotFoundError):
+                client.get_secret('SOME_KEY')
 
-        assert value == 'env-value'
-
-    def test_get_secret_no_fallback_when_disabled(self, mock_session):
-        """RED: Fallback can be disabled."""
-        if VaultwardenClient is None:
-            pytest.skip("VaultwardenClient not implemented yet")
-
-        with patch('requests.Session', return_value=mock_session), \
-             patch.dict(os.environ, {'NO_FALLBACK_KEY': 'env-value'}):
-            client = VaultwardenClient(
-                api_url="https://vault.test/api",
-                access_token="test-token",
-                fallback_env=False
-            )
-
-            mock_response = Mock()
-            mock_response.json.return_value = {'data': []}
-            mock_session.get.return_value = mock_response
-
-            value = client.get_secret('NO_FALLBACK_KEY')
-
-            assert value is None
-
-    def test_get_secret_handles_api_errors_gracefully(self, client, mock_session):
-        """RED: API errors should be caught and logged, fallback used."""
+    def test_get_secret_raises_on_api_error(self, client, mock_session):
+        """API errors raise VaultwardenError."""
         mock_session.get.side_effect = requests.exceptions.RequestException("API error")
 
-        with patch.dict(os.environ, {'ERROR_KEY': 'fallback-value'}):
-            value = client.get_secret('ERROR_KEY')
-
-            # Should fall back to environment variable
-            assert value == 'fallback-value'
+        with pytest.raises(VaultwardenError):
+            client.get_secret('ERROR_KEY')
 
     def test_set_secret_creates_cipher(self, client, mock_session):
-        """RED: set_secret() creates Vaultwarden item."""
+        """set_secret() creates Vaultwarden item."""
         mock_response = Mock()
         mock_response.status_code = 200
         mock_session.post.return_value = mock_response
@@ -242,8 +195,7 @@ class TestVaultwardenClient:
         assert json_data['login']['password'] == 'new-value'
 
     def test_set_secret_clears_cache(self, client, mock_session):
-        """RED: Setting a secret clears its cache entry."""
-        # First, cache a value
+        """Setting a secret clears its cache entry."""
         mock_get_response = Mock()
         mock_get_response.json.return_value = {
             'data': [{
@@ -258,19 +210,16 @@ class TestVaultwardenClient:
         assert value1 == 'old-value'
         assert 'UPDATE_KEY' in client._cache
 
-        # Now set a new value
         mock_post_response = Mock()
         mock_post_response.status_code = 200
         mock_session.post.return_value = mock_post_response
 
         client.set_secret('UPDATE_KEY', 'new-value')
 
-        # Cache should be cleared
         assert 'UPDATE_KEY' not in client._cache
 
     def test_clear_cache(self, client, mock_session):
-        """RED: clear_cache() removes all cached secrets."""
-        # Cache some values
+        """clear_cache() removes all cached secrets."""
         mock_response = Mock()
         mock_response.json.return_value = {
             'data': [{
@@ -282,32 +231,28 @@ class TestVaultwardenClient:
         mock_session.get.return_value = mock_response
 
         client.get_secret('KEY1')
-        client.get_secret('KEY2')  # Will cache None
-
         assert len(client._cache) > 0
 
         client.clear_cache()
-
         assert len(client._cache) == 0
 
     def test_get_secret_handles_wrong_item_type(self, client, mock_session):
-        """RED: Only type 1 (Login) items should be retrieved."""
+        """Only type 1 (Login) items should be retrieved."""
         mock_response = Mock()
         mock_response.json.return_value = {
             'data': [{
                 'name': 'WRONG_TYPE',
-                'type': 2,  # Not a login type
+                'type': 2,
                 'secureNote': {'text': 'note-value'}
             }]
         }
         mock_session.get.return_value = mock_response
 
-        value = client.get_secret('WRONG_TYPE')
-
-        assert value is None
+        with pytest.raises(SecretNotFoundError):
+            client.get_secret('WRONG_TYPE')
 
     def test_get_secret_finds_exact_name_match(self, client, mock_session):
-        """RED: Should only return exact name matches."""
+        """Should only return exact name matches."""
         mock_response = Mock()
         mock_response.json.return_value = {
             'data': [
@@ -326,7 +271,6 @@ class TestVaultwardenClient:
         mock_session.get.return_value = mock_response
 
         value = client.get_secret('PARTIAL_KEY')
-
         assert value == 'correct-value'
 
 
@@ -335,9 +279,9 @@ class TestGlobalClientSingleton:
     """Test global singleton functions."""
 
     def test_get_client_creates_singleton(self):
-        """RED: get_client() creates and returns singleton instance."""
-        if get_client is None:
-            pytest.skip("get_client not implemented yet")
+        """get_client() creates and returns singleton instance."""
+        import clients.vaultwarden_client as vc_module
+        vc_module._client = None
 
         with patch.dict(os.environ, {
             'VAULTWARDEN_URL': 'https://vault.test/api',
@@ -346,14 +290,10 @@ class TestGlobalClientSingleton:
             client1 = get_client()
             client2 = get_client()
 
-            assert client1 is client2  # Same instance
+            assert client1 is client2
 
     def test_get_client_requires_token(self):
-        """RED: get_client() raises error if VAULTWARDEN_TOKEN not set."""
-        if get_client is None:
-            pytest.skip("get_client not implemented yet")
-
-        # Clear any existing singleton
+        """get_client() raises error if VAULTWARDEN_TOKEN not set."""
         import clients.vaultwarden_client as vc_module
         vc_module._client = None
 
@@ -362,11 +302,7 @@ class TestGlobalClientSingleton:
                 get_client()
 
     def test_get_client_uses_default_url(self):
-        """RED: get_client() uses default URL if not set."""
-        if get_client is None:
-            pytest.skip("get_client not implemented yet")
-
-        # Clear any existing singleton
+        """get_client() uses default URL if not set."""
         import clients.vaultwarden_client as vc_module
         vc_module._client = None
 
@@ -377,11 +313,7 @@ class TestGlobalClientSingleton:
             assert client.api_url == 'https://vault.nuc-1.local/api'
 
     def test_get_secret_convenience_function(self):
-        """RED: get_secret() convenience function works."""
-        if get_secret is None:
-            pytest.skip("get_secret not implemented yet")
-
-        # Clear any existing singleton
+        """get_secret() convenience function delegates to Vaultwarden client."""
         import clients.vaultwarden_client as vc_module
         vc_module._client = None
 
@@ -403,5 +335,24 @@ class TestGlobalClientSingleton:
             mock_session.get.return_value = mock_response
 
             value = get_secret('CONVENIENCE_KEY')
-
             assert value == 'convenience-value'
+
+    def test_get_secret_no_env_fallback(self):
+        """get_secret() convenience function does NOT fall back to env vars."""
+        import clients.vaultwarden_client as vc_module
+        vc_module._client = None
+
+        with patch.dict(os.environ, {
+            'VAULTWARDEN_URL': 'https://vault.test/api',
+            'VAULTWARDEN_TOKEN': 'test-token',
+            'SOME_SECRET': 'env-value',
+        }), patch('requests.Session') as mock_session_class:
+            mock_session = MagicMock()
+            mock_session_class.return_value = mock_session
+
+            mock_response = Mock()
+            mock_response.json.return_value = {'data': []}
+            mock_session.get.return_value = mock_response
+
+            with pytest.raises(SecretNotFoundError):
+                get_secret('SOME_SECRET')

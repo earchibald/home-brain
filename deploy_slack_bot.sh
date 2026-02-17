@@ -42,7 +42,7 @@ echo "✅ All required files present"
 
 echo ""
 echo "📦 Step 1: Installing dependencies on NUC-2..."
-ssh "$NUC" "cd $REMOTE_DIR && source venv/bin/activate && pip install slack-bolt slack-sdk aiohttp"
+ssh "$NUC" "cd $REMOTE_DIR && source venv/bin/activate && pip install slack-bolt slack-sdk aiohttp ddgs"
 
 echo ""
 echo "📤 Step 2: Copying files to NUC-2..."
@@ -95,7 +95,7 @@ export SLACK_BOT_TOKEN="xoxb-your-bot-token-here"
 export SLACK_APP_TOKEN="xapp-your-app-token-here"
 
 # System URLs (defaults - adjust if needed)
-export KHOJ_URL="http://nuc-1.local:42110"
+export SEARCH_URL="http://nuc-1.local:9514"
 export OLLAMA_URL="http://m1-mini.local:11434"
 export BRAIN_FOLDER="/home/earchibald/brain"
 export NTFY_TOPIC="brain-notifications"

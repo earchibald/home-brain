@@ -4,7 +4,7 @@ E2E tests for Brain Assistant Slack bot.
 These tests send real DMs to the running bot on NUC-2 and verify responses
 by polling Slack's conversations.history API. They test the full stack:
 - Slack bot receives message via Socket Mode
-- Processes message through Khoj search + Ollama LLM
+- Processes message through semantic search + Ollama LLM
 - Posts response back to DM
 - CI polls for response and validates content
 

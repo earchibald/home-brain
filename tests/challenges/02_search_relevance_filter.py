@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Challenge 02: Khoj should skip low-relevance results.
+Challenge 02: Search should skip low-relevance results.
 
 Setup:
   1. Ask Brain Assistant a very specific question
@@ -31,7 +31,7 @@ def run_challenge():
     # Check that the response doesn't include obvious garbage/irrelevant context
     r_lower = response.lower()
 
-    # If Khoj returned low-score results about unrelated topics, they'd show up
+    # If search returned low-score results about unrelated topics, they'd show up
     # as confusing context. A good response either has precise context or no context.
     irrelevant_phrases = [
         "daily log",

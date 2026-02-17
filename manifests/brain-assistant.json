@@ -1,0 +1,64 @@
+{
+  "display_information": {
+    "name": "Brain Assistant"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "Brain Assistant",
+      "always_online": false
+    },
+    "slash_commands": [
+      {
+        "command": "/apikey",
+        "description": "Manage API keys for cloud AI providers (Gemini, etc.)",
+        "should_escape": true
+      },
+      {
+        "command": "/model",
+        "description": "Select LLM provider and model",
+        "should_escape": true
+      },
+      {
+        "command": "/index",
+        "description": "Document Index Management",
+        "should_escape": true
+      },
+      {
+        "command": "/reset",
+        "description": "Delete all conversation history (triple confirmation)",
+        "should_escape": true
+      }
+    ]
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "channels:history",
+        "chat:write",
+        "chat:write.customize",
+        "im:history",
+        "im:read",
+        "im:write",
+        "incoming-webhook",
+        "files:read",
+        "commands"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "bot_events": [
+        "app_mention",
+        "message.channels",
+        "message.im"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": true,
+    "token_rotation_enabled": false
+  }
+}

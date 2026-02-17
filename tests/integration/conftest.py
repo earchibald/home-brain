@@ -26,11 +26,11 @@ def mock_agent_platform_on_import():
     from failing when importing agents.slack_agent during test discovery.
     """
     with patch("clients.brain_io.BrainIO") as mock_brain:
-        with patch("clients.khoj_client.KhojClient") as mock_khoj:
+        with patch("clients.semantic_search_client.SemanticSearchClient") as mock_search:
             with patch("clients.llm_client.OllamaClient") as mock_llm:
                 # Make mocks return MagicMock instances
                 mock_brain.return_value = MagicMock()
-                mock_khoj.return_value = MagicMock()
+                mock_search.return_value = MagicMock()
                 mock_llm.return_value = MagicMock()
 
                 yield

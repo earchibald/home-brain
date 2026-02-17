@@ -1,10 +1,10 @@
 """
-GREEN Integration Tests: Khoj Context Injection for LLM Prompts
+GREEN Integration Tests: Search Context Injection for LLM Prompts
 
 Tests for brain context integration including:
-- Khoj search invocation for long queries
+- Brain search invocation for long queries
 - Search result formatting with citations
-- Graceful degradation when Khoj unavailable
+- Graceful degradation when search unavailable
 - Context injection into prompt
 - Metadata tracking of context usage
 - Short query optimization (no search)
@@ -42,36 +42,40 @@ def get_slack_agent():
 
 
 @pytest.mark.integration
-class TestKhojContextInjection:
-    """Test suite for Khoj brain context integration into LLM prompts"""
+class TestSearchContextInjection:
+    """Test suite for brain search context integration into LLM prompts"""
 
     @pytest.fixture
     def agent_config(self, test_brain_path):
-        """Configuration for test Slack agent with Khoj enabled"""
+        """Configuration for test Slack agent with search enabled"""
         return {
-            "khoj_url": "http://nuc-1.local:42110",
+            "search_url": "http://nuc-1.local:9514",
             "ollama_url": "http://m1-mini.local:11434",
             "brain_path": str(test_brain_path),
             "model": "llama3.2",
             "max_context_tokens": 6000,
-            "enable_khoj_search": True,
+            "enable_search": True,
             "max_search_results": 3,
             "notification": {"enabled": False},
         }
 
     @pytest.fixture
-    def mock_env(self, monkeypatch):
-        """Mock environment variables for Slack tokens"""
-        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test-token-12345")
-        monkeypatch.setenv("SLACK_APP_TOKEN", "xapp-test-token-67890")
+    def mock_secrets(self):
+        """Mock Vaultwarden get_secret for Slack tokens"""
+        token_map = {
+            "SLACK_BOT_TOKEN": "xoxb-test-token-12345",
+            "SLACK_APP_TOKEN": "xapp-test-token-67890",
+        }
+        with patch("agents.slack_agent.get_secret", side_effect=lambda k, **kw: token_map.get(k)):
+            yield
 
     @pytest.fixture
-    async def agent_with_mocks(self, agent_config, mock_env, mock_khoj, mock_llm):
+    async def agent_with_mocks(self, agent_config, mock_secrets, mock_search, mock_llm):
         """Create SlackAgent with mocked dependencies"""
         with patch("agents.slack_agent.AsyncApp"):
             SlackAgent = get_slack_agent()
             agent = SlackAgent(agent_config)
-            agent.khoj = mock_khoj
+            agent.search = mock_search
             agent.llm = mock_llm
 
             # Mock conversations with sync methods returning immediately and async methods as coroutines
@@ -86,34 +90,34 @@ class TestKhojContextInjection:
             yield agent
 
     # ========================================================================
-    # Test Case 1: Khoj search called for long queries
+    # Test Case 1: Brain search called for long queries
     # ========================================================================
 
     @pytest.mark.asyncio
-    async def test_khoj_search_called_for_long_queries(self, agent_with_mocks):
+    async def test_search_search_called_for_long_queries(self, agent_with_mocks):
         """
-        Verify that Khoj search is invoked for queries longer than minimum length.
+        Verify that Brain search is invoked for queries longer than minimum length.
 
         Scenario:
-        1. Agent enabled with enable_khoj_search=True
+        1. Agent enabled with enable_search=True
         2. User sends query > 10 characters
         3. _process_message() invoked
-        4. Khoj.search() should be called
+        4. search.search() should be called
 
-        Expected: khoj.search() called with query and parameters
+        Expected: search.search() called with query and parameters
         """
         agent = agent_with_mocks
         agent.conversations.load_conversation.return_value = []
         agent.conversations.count_conversation_tokens.return_value = 100
         agent.conversations.summarize_if_needed.return_value = []
 
-        # Long query that should trigger Khoj search
+        # Long query that should trigger Brain search
         query = "Tell me about ADHD management strategies I've discussed before"
         user_id = "U01TEST123"
         thread_id = "1234567890.123456"
 
-        # Mock Khoj to track call
-        agent.khoj.search = AsyncMock(
+        # Mock search to track call
+        agent.search.search = AsyncMock(
             return_value=[
                 {
                     "snippet": "ADHD management includes time blocking and body doubling",
@@ -125,24 +129,24 @@ class TestKhojContextInjection:
         # Call _process_message
         await agent._process_message(user_id, query, thread_id)
 
-        # Verify Khoj search was called with correct parameters
-        agent.khoj.search.assert_called_once()
-        call_kwargs = agent.khoj.search.call_args[1]
+        # Verify Brain search was called with correct parameters
+        agent.search.search.assert_called_once()
+        call_kwargs = agent.search.search.call_args[1]
         assert call_kwargs["query"] == query
         assert call_kwargs["content_type"] == "markdown"
         assert call_kwargs["limit"] == 3
 
     # ========================================================================
-    # Test Case 2: Khoj results formatted with citations
+    # Test Case 2: Search results formatted with citations
     # ========================================================================
 
     @pytest.mark.asyncio
-    async def test_khoj_results_formatted_with_citations(self, agent_with_mocks):
+    async def test_search_results_data_formatted_with_citations(self, agent_with_mocks):
         """
-        Verify that Khoj search results are formatted with proper citations.
+        Verify that Brain search results are formatted with proper citations.
 
         Scenario:
-        1. Khoj returns multiple results
+        1. Search returns multiple results
         2. _process_message() formats results with citations
         3. Context string includes snippet excerpts and file sources
 
@@ -153,8 +157,8 @@ class TestKhojContextInjection:
         agent.conversations.count_conversation_tokens.return_value = 100
         agent.conversations.summarize_if_needed.return_value = []
 
-        # Mock Khoj results
-        khoj_results = [
+        # Mock Search results
+        search_results_data = [
             {
                 "snippet": "Time blocking helps with ADHD executive function and task initiation",
                 "file": "journal/2026-02-10.md",
@@ -172,7 +176,7 @@ class TestKhojContextInjection:
             },
         ]
 
-        agent.khoj.search = AsyncMock(return_value=khoj_results)
+        agent.search.search = AsyncMock(return_value=search_results_data)
 
         user_id = "U01TEST123"
         thread_id = "1234567890.123456"
@@ -198,16 +202,16 @@ class TestKhojContextInjection:
         )
 
     # ========================================================================
-    # Test Case 3: Khoj unavailable degrades gracefully
+    # Test Case 3: search unavailable degrades gracefully
     # ========================================================================
 
     @pytest.mark.asyncio
-    async def test_khoj_unavailable_degrades_gracefully(self, agent_with_mocks):
+    async def test_search_unavailable_degrades_gracefully(self, agent_with_mocks):
         """
-        Verify that agent continues if Khoj is unavailable.
+        Verify that agent continues if search is unavailable.
 
         Scenario:
-        1. Khoj.search() raises exception
+        1. search.search() raises exception
         2. Agent logs warning but continues
         3. LLM response generated without brain context
         4. No error message sent to user
@@ -219,8 +223,8 @@ class TestKhojContextInjection:
         agent.conversations.count_conversation_tokens.return_value = 100
         agent.conversations.summarize_if_needed.return_value = []
 
-        # Mock Khoj to raise exception
-        agent.khoj.search = AsyncMock(side_effect=Exception("Khoj connection failed"))
+        # Mock search to raise exception
+        agent.search.search = AsyncMock(side_effect=Exception("Search connection failed"))
 
         agent.llm.chat = AsyncMock(return_value="Response without brain context")
 
@@ -247,7 +251,7 @@ class TestKhojContextInjection:
         Verify that search results are properly injected into the LLM prompt.
 
         Scenario:
-        1. Khoj search returns results
+        1. Brain search returns results
         2. _process_message() builds prompt with context
         3. User query appended after context
         4. All passed to llm.chat()
@@ -259,14 +263,14 @@ class TestKhojContextInjection:
         agent.conversations.count_conversation_tokens.return_value = 100
         agent.conversations.summarize_if_needed.return_value = []
 
-        khoj_results = [
+        search_results_data = [
             {
                 "snippet": "Brain entry about productivity systems",
                 "file": "journal/2026-02-10.md",
             }
         ]
 
-        agent.khoj.search = AsyncMock(return_value=khoj_results)
+        agent.search.search = AsyncMock(return_value=search_results_data)
         agent.llm.chat = AsyncMock(return_value="AI response")
 
         user_id = "U01TEST123"
@@ -298,7 +302,7 @@ class TestKhojContextInjection:
         Verify that context_used metadata is set when search results found.
 
         Scenario:
-        1. Khoj.search() returns results
+        1. search.search() returns results
         2. Message saved with metadata
         3. metadata["context_used"] = True
 
@@ -310,9 +314,9 @@ class TestKhojContextInjection:
         agent.conversations.summarize_if_needed.return_value = []
         agent.conversations.save_message = AsyncMock()
 
-        khoj_results = [{"snippet": "Brain entry", "file": "journal/2026-02-10.md"}]
+        search_results_data = [{"snippet": "Brain entry", "file": "journal/2026-02-10.md"}]
 
-        agent.khoj.search = AsyncMock(return_value=khoj_results)
+        agent.search.search = AsyncMock(return_value=search_results_data)
         agent.llm.chat = AsyncMock(return_value="Response with context")
 
         user_id = "U01TEST123"
@@ -336,8 +340,8 @@ class TestKhojContextInjection:
                     found_context_used = True
                     break
 
-        # If Khoj returned results, context_used should be tracked
-        if khoj_results:
+        # If search returned results, context_used should be tracked
+        if search_results_data:
             assert found_context_used or agent.conversations.save_message.called
 
     # ========================================================================
@@ -347,22 +351,22 @@ class TestKhojContextInjection:
     @pytest.mark.asyncio
     async def test_no_search_for_short_queries(self, agent_with_mocks):
         """
-        Verify that Khoj search is skipped for short queries (optimization).
+        Verify that Brain search is skipped for short queries (optimization).
 
         Scenario:
         1. Query is <= 10 characters
-        2. enable_khoj_search=True but query too short
+        2. enable_search=True but query too short
         3. _process_message() invoked
-        4. Khoj.search() should NOT be called
+        4. search.search() should NOT be called
 
-        Expected: khoj.search() not called, response generated without search
+        Expected: search.search() not called, response generated without search
         """
         agent = agent_with_mocks
         agent.conversations.load_conversation.return_value = []
         agent.conversations.count_conversation_tokens.return_value = 100
         agent.conversations.summarize_if_needed.return_value = []
 
-        agent.khoj.search = AsyncMock()
+        agent.search.search = AsyncMock()
         agent.llm.chat = AsyncMock(return_value="Short response")
 
         user_id = "U01TEST123"
@@ -371,9 +375,9 @@ class TestKhojContextInjection:
 
         await agent._process_message(user_id, short_query, thread_id)
 
-        # Khoj search should NOT be called for short queries
-        # (The check is: if self.enable_khoj_search and len(text) > 10)
-        agent.khoj.search.assert_not_called()
+        # Brain search should NOT be called for short queries
+        # (The check is: if self.enable_search and len(text) > 10)
+        agent.search.search.assert_not_called()
 
         # But LLM should still be called
         agent.llm.chat.assert_called_once()

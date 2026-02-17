@@ -1,0 +1,25 @@
+{
+  "display_information": {
+    "name": "Brain User Client",
+    "description": "Programmatic user-token access for testing and agent orchestration with Brain Assistant.",
+    "long_description": "Allows agents and automated tests to interact with Brain Assistant via DMs as the real user. Uses a User OAuth Token (xoxp-) with minimal scopes. All tokens managed in Vaultwarden."
+  },
+  "features": {
+    "bot_user": null
+  },
+  "oauth_config": {
+    "scopes": {
+      "user": [
+        "chat:write",
+        "im:history",
+        "im:read",
+        "im:write"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

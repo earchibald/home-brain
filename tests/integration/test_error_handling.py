@@ -3,7 +3,7 @@ GREEN Integration Tests: Error Handling and Resilience
 
 Tests for error scenarios and recovery including:
 - Friendly error messages for LLM failures
-- Graceful degradation when Khoj unavailable
+- Graceful degradation when search unavailable
 - Working indicator cleanup on errors
 - Stack trace logging for unexpected errors
 - Service restart mechanisms
@@ -56,29 +56,33 @@ class TestErrorHandlingAndResilience:
     def agent_config(self, test_brain_path):
         """Configuration for test Slack agent"""
         return {
-            "khoj_url": "http://nuc-1.local:42110",
+            "search_url": "http://nuc-1.local:9514",
             "ollama_url": "http://m1-mini.local:11434",
             "brain_path": str(test_brain_path),
             "model": "llama3.2",
             "max_context_tokens": 6000,
-            "enable_khoj_search": True,
+            "enable_search": True,
             "max_search_results": 3,
             "notification": {"enabled": True},
         }
 
     @pytest.fixture
-    def mock_env(self, monkeypatch):
-        """Mock environment variables for Slack tokens"""
-        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test-token-12345")
-        monkeypatch.setenv("SLACK_APP_TOKEN", "xapp-test-token-67890")
+    def mock_secrets(self):
+        """Mock Vaultwarden get_secret for Slack tokens"""
+        token_map = {
+            "SLACK_BOT_TOKEN": "xoxb-test-token-12345",
+            "SLACK_APP_TOKEN": "xapp-test-token-67890",
+        }
+        with patch("agents.slack_agent.get_secret", side_effect=lambda k, **kw: token_map.get(k)):
+            yield
 
     @pytest.fixture
-    async def agent_with_mocks(self, agent_config, mock_env, mock_khoj, mock_llm):
+    async def agent_with_mocks(self, agent_config, mock_secrets, mock_search, mock_llm):
         """Create SlackAgent with mocked dependencies"""
         with patch("agents.slack_agent.AsyncApp"):
             SlackAgent = get_slack_agent()
             agent = SlackAgent(agent_config)
-            agent.khoj = mock_khoj
+            agent.search = mock_search
             agent.llm = mock_llm
 
             # Mock conversations with sync methods returning immediately and async methods as coroutines
@@ -135,16 +139,16 @@ class TestErrorHandlingAndResilience:
         )
 
     # ========================================================================
-    # Test Case 2: Khoj error continues without context
+    # Test Case 2: Search error continues without context
     # ========================================================================
 
     @pytest.mark.asyncio
-    async def test_khoj_error_continues_without_context(self, agent_with_mocks):
+    async def test_search_error_continues_without_context(self, agent_with_mocks):
         """
-        Verify that Khoj errors don't prevent message processing.
+        Verify that Search errors don't prevent message processing.
 
         Scenario:
-        1. Khoj.search() raises exception
+        1. search.search() raises exception
         2. Agent catches exception and logs warning
         3. Process continues without brain context
         4. LLM generates response
@@ -160,8 +164,8 @@ class TestErrorHandlingAndResilience:
         agent.conversations.count_conversation_tokens.return_value = 100
         agent.conversations.summarize_if_needed.return_value = []
 
-        # Mock Khoj to fail
-        agent.khoj.search = AsyncMock(side_effect=Exception("Khoj service unavailable"))
+        # Mock search to fail
+        agent.search.search = AsyncMock(side_effect=Exception("Search service unavailable"))
 
         # Mock LLM to succeed
         agent.llm.chat = AsyncMock(
@@ -270,7 +274,7 @@ class TestErrorHandlingAndResilience:
     # ========================================================================
 
     @pytest.mark.asyncio
-    async def test_service_restart_after_crash(self, agent_config, mock_env):
+    async def test_service_restart_after_crash(self, agent_config, mock_secrets):
         """
         Verify that service agent restarts after crash.
 
@@ -357,29 +361,33 @@ class TestErrorRecoveryScenarios:
     def agent_config(self, test_brain_path):
         """Configuration for test agent"""
         return {
-            "khoj_url": "http://nuc-1.local:42110",
+            "search_url": "http://nuc-1.local:9514",
             "ollama_url": "http://m1-mini.local:11434",
             "brain_path": str(test_brain_path),
             "model": "llama3.2",
             "max_context_tokens": 6000,
-            "enable_khoj_search": True,
+            "enable_search": True,
             "max_search_results": 3,
             "notification": {"enabled": True},
         }
 
     @pytest.fixture
-    def mock_env(self, monkeypatch):
-        """Mock environment variables"""
-        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test-token-12345")
-        monkeypatch.setenv("SLACK_APP_TOKEN", "xapp-test-token-67890")
+    def mock_secrets(self):
+        """Mock Vaultwarden get_secret for Slack tokens"""
+        token_map = {
+            "SLACK_BOT_TOKEN": "xoxb-test-token-12345",
+            "SLACK_APP_TOKEN": "xapp-test-token-67890",
+        }
+        with patch("agents.slack_agent.get_secret", side_effect=lambda k, **kw: token_map.get(k)):
+            yield
 
     @pytest.fixture
-    async def agent_with_mocks(self, agent_config, mock_env, mock_khoj, mock_llm):
+    async def agent_with_mocks(self, agent_config, mock_secrets, mock_search, mock_llm):
         """Create agent with mocks"""
         with patch("agents.slack_agent.AsyncApp"):
             SlackAgent = get_slack_agent()
             agent = SlackAgent(agent_config)
-            agent.khoj = mock_khoj
+            agent.search = mock_search
             agent.llm = mock_llm
 
             # Mock conversations with sync methods returning immediately and async methods as coroutines
@@ -438,26 +446,26 @@ class TestErrorRecoveryScenarios:
     # ========================================================================
 
     @pytest.mark.asyncio
-    async def test_khoj_unavailable_at_startup(self, agent_with_mocks):
+    async def test_search_unavailable_at_startup(self, agent_with_mocks):
         """
-        Verify startup continues if Khoj unavailable (non-critical).
+        Verify startup continues if search unavailable (non-critical).
 
         Scenario:
         1. _health_check() called during startup
-        2. Khoj.health_check() returns False or raises
+        2. search.health_check() returns False or raises
         3. Startup logs warning but continues
         4. Agent still runnable
 
         Expected:
-        - Warning logged for Khoj unavailability
-        - Agent continues (Khoj is optional)
+        - Warning logged for search unavailability
+        - Agent continues (search is optional)
         - Ollama and Slack must be available
         """
         agent = agent_with_mocks
 
-        agent.khoj.health_check = AsyncMock(return_value=False)
+        agent.search.health_check = AsyncMock(return_value=False)
         agent.llm.health_check = AsyncMock(return_value=True)
 
-        # _health_check should handle Khoj failure gracefully
-        # Agent can continue without Khoj but not without Ollama
+        # _health_check should handle search failure gracefully
+        # Agent can continue without search but not without Ollama
         assert agent.llm.health_check is not None

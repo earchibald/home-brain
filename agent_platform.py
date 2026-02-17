@@ -39,12 +39,12 @@ class Agent:
     def __init__(
         self,
         name: str,
-        khoj: Optional[SemanticSearchClient] = None,
+        search: Optional[SemanticSearchClient] = None,
         llm: Optional[OllamaClient] = None,
         brain_io: Optional[BrainIO] = None,
     ):
         self.name = name
-        self.khoj = khoj or SemanticSearchClient()
+        self.search = search or SemanticSearchClient()
         self.llm = llm or OllamaClient()
         self.brain_io = brain_io or BrainIO()
         self.start_time = None
@@ -121,7 +121,7 @@ class AgentPlatform:
 
     def __init__(self):
         self.agents: Dict[str, Callable] = {}
-        self.khoj = SemanticSearchClient()
+        self.search = SemanticSearchClient()
         self.llm = OllamaClient()
         self.brain_io = BrainIO()
 
@@ -138,7 +138,7 @@ class AgentPlatform:
 
         agent_class = self.agents[name]
         agent = agent_class(
-            name=name, khoj=self.khoj, llm=self.llm, brain_io=self.brain_io, **kwargs
+            name=name, search=self.search, llm=self.llm, brain_io=self.brain_io, **kwargs
         )
 
         return await agent.execute()
@@ -207,7 +207,7 @@ class AgentPlatform:
     async def health_check(self) -> Dict[str, bool]:
         """Check health of all dependencies"""
         health = {
-            "khoj": await self.khoj.health_check(),
+            "search": await self.search.health_check(),
             "ollama": await self.llm.health_check(),
             "brain_path": self.brain_io.get_brain_path().exists(),
         }
@@ -217,7 +217,7 @@ class AgentPlatform:
 
     async def close(self):
         """Close all connections"""
-        await self.khoj.close()
+        await self.search.close()
         await self.llm.close()
 
 

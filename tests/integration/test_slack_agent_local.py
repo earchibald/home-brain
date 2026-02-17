@@ -46,31 +46,35 @@ class TestSlackAgentLocalMessaging:
     def agent_config(self, test_brain_path):
         """Configuration for test Slack agent"""
         return {
-            "khoj_url": "http://nuc-1.local:42110",
+            "search_url": "http://nuc-1.local:9514",
             "ollama_url": "http://m1-mini.local:11434",
             "brain_path": str(test_brain_path),
             "model": "llama3.2",
             "max_context_tokens": 6000,
-            "enable_khoj_search": True,
+            "enable_search": True,
             "max_search_results": 3,
             "notification": {"enabled": False},
         }
 
     @pytest.fixture
-    def mock_env(self, monkeypatch):
-        """Mock environment variables for Slack tokens"""
-        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-test-token-12345")
-        monkeypatch.setenv("SLACK_APP_TOKEN", "xapp-test-token-67890")
+    def mock_secrets(self):
+        """Mock Vaultwarden get_secret for Slack tokens"""
+        token_map = {
+            "SLACK_BOT_TOKEN": "xoxb-test-token-12345",
+            "SLACK_APP_TOKEN": "xapp-test-token-67890",
+        }
+        with patch("agents.slack_agent.get_secret", side_effect=lambda k, **kw: token_map.get(k)):
+            yield
 
     @pytest.fixture
-    async def agent_with_mocks(self, agent_config, mock_env, mock_khoj, mock_llm):
+    async def agent_with_mocks(self, agent_config, mock_secrets, mock_search, mock_llm):
         """Create a SlackAgent with mocked dependencies"""
         with patch("agents.slack_agent.AsyncApp") as mock_app:
             SlackAgent = get_slack_agent()
             agent = SlackAgent(agent_config)
 
             # Replace dependencies with mocks
-            agent.khoj = mock_khoj
+            agent.search = mock_search
             agent.llm = mock_llm
             agent.app = mock_app
 

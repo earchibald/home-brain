@@ -292,7 +292,11 @@ class ConversationManager:
         return total
 
     async def summarize_if_needed(
-        self, messages: List[Dict], max_tokens: int = 6000, keep_recent: int = 3
+        self,
+        messages: List[Dict],
+        max_tokens: int = 6000,
+        keep_recent: int = 3,
+        summarize_fn=None,
     ) -> List[Dict]:
         """
         Summarize conversation if it exceeds token limit
@@ -306,6 +310,8 @@ class ConversationManager:
             messages: Conversation history
             max_tokens: Maximum allowed tokens
             keep_recent: Number of recent messages to always keep
+            summarize_fn: Optional async function(prompt) -> str for summarization.
+                         If not provided, uses self.llm_client.
 
         Returns:
             Compressed message list
@@ -349,10 +355,13 @@ Conversation:
 Concise summary:"""
 
         try:
-            # Call LLM to summarize
-            summary = await self.llm_client.complete(
-                prompt=summary_prompt, model="llama3.2", max_tokens=1000
-            )
+            # Call LLM to summarize (use provided function or default client)
+            if summarize_fn:
+                summary = await summarize_fn(summary_prompt)
+            else:
+                summary = await self.llm_client.complete(
+                    prompt=summary_prompt, model="llama3.2", max_tokens=1000
+                )
 
             # Create summary message
             summary_message = {
@@ -482,7 +491,7 @@ Concise summary:"""
 
     async def delete_conversation(self, user_id: str, thread_id: str) -> bool:
         """
-        Delete a conversation
+        Delete a conversation (both JSON file and cxdb mapping)
 
         Args:
             user_id: Slack user ID
@@ -492,15 +501,24 @@ Concise summary:"""
             True if deleted, False if not found
         """
         path = self._get_conversation_path(user_id, thread_id)
+        deleted = False
 
+        # Delete JSON file
         if path.exists():
             try:
                 path.unlink()
-                return True
+                deleted = True
             except Exception as e:
                 print(f"Error deleting conversation {path}: {e}")
                 return False
-        return False
+        
+        # Clear cxdb mapping
+        if thread_id in self._context_map:
+            del self._context_map[thread_id]
+            self._save_context_map()
+            deleted = True
+        
+        return deleted
 
 
 # Example usage

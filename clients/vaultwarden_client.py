@@ -9,6 +9,8 @@ Provides unified interface for secrets retrieval with:
 - Automatic ntfy notifications on errors
 """
 
+import base64
+import json
 import os
 import time
 import requests
@@ -78,12 +80,31 @@ class VaultwardenClient:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     def _update_session_token(self, token: str):
-        """Update session with new token."""
+        """Update session with new token and parse expiry."""
         self.access_token = token
         self._session.headers.update({
             'Authorization': f'Bearer {token}',
             'Content-Type': 'application/json'
         })
+        
+        # Parse JWT to extract expiry time
+        try:
+            # JWT structure: header.payload.signature
+            parts = token.split('.')
+            if len(parts) >= 2:
+                # Decode payload (pad if needed for base64)
+                payload = parts[1]
+                payload += '=' * (4 - len(payload) % 4)  # Add padding
+                decoded = json.loads(base64.urlsafe_b64decode(payload))
+                
+                # Extract expiry timestamp
+                if 'exp' in decoded:
+                    self.token_expiry = datetime.fromtimestamp(decoded['exp'])
+                    print(f"Token expires at: {self.token_expiry}")
+        except Exception as e:
+            # If parsing fails, set a short expiry to trigger refresh
+            print(f"Warning: Could not parse JWT expiry: {e}")
+            self.token_expiry = datetime.now() + timedelta(seconds=300)
 
     def _refresh_token(self) -> str:
         """
@@ -308,10 +329,11 @@ def get_client() -> VaultwardenClient:
 
 def get_secret(key: str, default: Optional[str] = None) -> Optional[str]:
     """
-    Convenience function to get secret from Vaultwarden with environment fallback.
+    Convenience function to get secret from Vaultwarden.
 
-    Tries Vaultwarden first, then falls back to environment variables.
-    This enables gradual migration to Vaultwarden while maintaining compatibility.
+    Vaultwarden is the ONLY source for secrets. No environment variable
+    fallback. If the secret is not found and no default is provided,
+    raises SecretNotFoundError.
 
     Args:
         key: Secret key name
@@ -321,27 +343,7 @@ def get_secret(key: str, default: Optional[str] = None) -> Optional[str]:
         Secret value or default
 
     Raises:
-        SecretNotFoundError: If secret not found in either source and no default provided
+        SecretNotFoundError: If secret not found and no default provided
+        VaultwardenError: If Vaultwarden is unreachable
     """
-    # Try Vaultwarden first (if configured)
-    vaultwarden_token = os.getenv('VAULTWARDEN_TOKEN')
-    if vaultwarden_token:
-        try:
-            return get_client().get_secret(key, default=None)
-        except (SecretNotFoundError, VaultwardenError):
-            # Fall through to environment variable check
-            pass
-    
-    # Fall back to environment variable
-    env_value = os.getenv(key)
-    if env_value:
-        return env_value
-    
-    # Return default or raise if no default
-    if default is not None:
-        return default
-    
-    raise SecretNotFoundError(
-        f"Secret '{key}' not found in Vaultwarden or environment variables. "
-        f"Set {key}=<value> as environment variable or add to Vaultwarden."
-    )
+    return get_client().get_secret(key, default=default)

@@ -1,0 +1,14 @@
+# Slack App Registry
+# Maps app names to their Slack app IDs for use with slack-app-manager
+
+apps:
+  brain-assistant:
+    app_id: A0AFX0RUJ8Y
+    manifest: manifests/brain-assistant.json
+    description: Brain Assistant Slack bot (Socket Mode, DM handler)
+
+  brain-user-client:
+    # app_id will be populated after first `slack-app-manager create`
+    app_id: null
+    manifest: manifests/slack-user-client.json
+    description: User token app for programmatic DM access

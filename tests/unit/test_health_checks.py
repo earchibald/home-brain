@@ -4,7 +4,7 @@ Unit tests for Slack Agent health checks - dependency validation on startup.
 Tests verify:
 - All health checks pass when services available
 - Ollama down fails startup
-- Khoj down warns but continues
+- Search down warns but continues
 - Brain folder missing fails startup
 - Slack auth failure blocks startup
 """
@@ -22,14 +22,14 @@ class TestHealthChecks:
 
     @pytest.mark.asyncio
     async def test_all_health_checks_pass(
-        self, test_brain_path, mock_llm, mock_khoj, mock_slack_app
+        self, test_brain_path, mock_llm, mock_search, mock_slack_app
     ):
         """
         Test that all health checks pass when all services available.
 
         Verifies that:
         - Ollama health check passes
-        - Khoj health check passes
+        - Search health check passes
         - Brain folder exists
         - Slack auth succeeds
         - No errors raised
@@ -38,33 +38,35 @@ class TestHealthChecks:
         Args:
             test_brain_path: Fixture providing temporary brain directory
             mock_llm: Mock LLM client (AsyncMock)
-            mock_khoj: Mock Khoj client (AsyncMock)
+            mock_search: Mock search client (AsyncMock)
             mock_slack_app: Mock Slack app (MagicMock)
         """
         config = {
             "brain_path": str(test_brain_path),
             "ollama_url": "http://m1-mini.local:11434",
-            "khoj_url": "http://nuc-1.local:42110",
+            "search_url": "http://nuc-1.local:9514",
             "model": "llama3.2",
-            "enable_khoj_search": True,
+            "enable_search": True,
         }
 
         # Patch environment variables
-        with patch.dict(
-            "os.environ",
-            {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
+        with patch(
+            "agents.slack_agent.get_secret",
+            side_effect=lambda k, **kw: {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"}.get(k),
         ):
-            # Patch the clients to use mocks  
+            # Patch the clients to use mocks
             with (
-                patch("agent_platform.OllamaClient") as mock_llm_class,
-                patch("agent_platform.SemanticSearchClient") as mock_search_class,
-                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.SemanticSearchClient") as mock_search_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("agents.slack_agent.BrainIO"),
                 patch("agent_platform.BrainIO"),
-                patch("slack_bolt.app.client.WebClient"),
+                patch("agents.slack_agent.ConversationManager"),
+                patch("agents.slack_agent.CxdbClient"),
             ):
                 # Setup mocks
                 mock_llm_class.return_value = mock_llm
-                mock_search_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_search
                 mock_app_class.return_value = mock_slack_app
 
                 # Create agent
@@ -77,7 +79,7 @@ class TestHealthChecks:
 
     @pytest.mark.asyncio
     async def test_ollama_down_fails_startup(
-        self, test_brain_path, mock_khoj, mock_slack_app
+        self, test_brain_path, mock_search, mock_slack_app
     ):
         """
         Test that startup fails when Ollama is unavailable.
@@ -90,13 +92,13 @@ class TestHealthChecks:
 
         Args:
             test_brain_path: Fixture providing temporary brain directory
-            mock_khoj: Mock Khoj client
+            mock_search: Mock search client
             mock_slack_app: Mock Slack app
         """
         config = {
             "brain_path": str(test_brain_path),
             "ollama_url": "http://m1-mini.local:11434",
-            "khoj_url": "http://nuc-1.local:42110",
+            "search_url": "http://nuc-1.local:9514",
             "model": "llama3.2",
         }
 
@@ -104,20 +106,21 @@ class TestHealthChecks:
         mock_llm = AsyncMock()
         mock_llm.health_check = AsyncMock(side_effect=Exception("Connection refused"))
 
-        with patch.dict(
-            "os.environ",
-            {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
+        with patch(
+            "agents.slack_agent.get_secret",
+            side_effect=lambda k, **kw: {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"}.get(k),
         ):
             with (
-                patch("clients.llm_client.OllamaClient") as mock_llm_class,
-                patch("clients.semantic_search_client.SemanticSearchClient") as mock_search_class,
-                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
-                patch("clients.brain_io.BrainIO"),
-                patch("clients.conversation_manager.ConversationManager"),
-                patch("clients.cxdb_client.CxdbClient"),
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.SemanticSearchClient") as mock_search_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("agents.slack_agent.BrainIO"),
+                patch("agent_platform.BrainIO"),
+                patch("agents.slack_agent.ConversationManager"),
+                patch("agents.slack_agent.CxdbClient"),
             ):
                 mock_llm_class.return_value = mock_llm
-                mock_search_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_search
                 mock_app_class.return_value = mock_slack_app
 
                 agent = SlackAgent(config)
@@ -127,17 +130,17 @@ class TestHealthChecks:
                     await agent._health_check()
 
     @pytest.mark.asyncio
-    async def test_khoj_down_warns_but_continues(
+    async def test_search_down_warns_but_continues(
         self, test_brain_path, mock_llm, mock_slack_app
     ):
         """
-        Test that Khoj unavailability is non-fatal (warning only).
+        Test that search unavailability is non-fatal (warning only).
 
         Verifies that:
-        - Health check detects Khoj failure
+        - Health check detects search failure
         - Warning is logged (not error)
         - Startup continues (no exception raised)
-        - Agent remains functional without Khoj
+        - Agent remains functional without search
         - Error message does not cause RuntimeError
 
         Args:
@@ -148,34 +151,35 @@ class TestHealthChecks:
         config = {
             "brain_path": str(test_brain_path),
             "ollama_url": "http://m1-mini.local:11434",
-            "khoj_url": "http://nuc-1.local:42110",
+            "search_url": "http://nuc-1.local:9514",
             "model": "llama3.2",
-            "enable_khoj_search": True,
+            "enable_search": True,
         }
 
-        # Create mock Khoj that fails
-        mock_khoj = AsyncMock()
-        mock_khoj.health_check = AsyncMock(side_effect=Exception("Khoj unavailable"))
+        # Create mock search client that fails
+        mock_search = AsyncMock()
+        mock_search.health_check = AsyncMock(side_effect=Exception("search unavailable"))
 
-        with patch.dict(
-            "os.environ",
-            {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
+        with patch(
+            "agents.slack_agent.get_secret",
+            side_effect=lambda k, **kw: {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"}.get(k),
         ):
             with (
-                patch("clients.llm_client.OllamaClient") as mock_llm_class,
-                patch("clients.semantic_search_client.SemanticSearchClient") as mock_search_class,
-                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
-                patch("clients.brain_io.BrainIO"),
-                patch("clients.conversation_manager.ConversationManager"),
-                patch("clients.cxdb_client.CxdbClient"),
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.SemanticSearchClient") as mock_search_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("agents.slack_agent.BrainIO"),
+                patch("agent_platform.BrainIO"),
+                patch("agents.slack_agent.ConversationManager"),
+                patch("agents.slack_agent.CxdbClient"),
             ):
                 mock_llm_class.return_value = mock_llm
-                mock_search_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_search
                 mock_app_class.return_value = mock_slack_app
 
                 agent = SlackAgent(config)
 
-                # Health check should NOT raise - Khoj is optional
+                # Health check should NOT raise - search is optional
                 try:
                     await agent._health_check()
                     # Should reach here
@@ -186,7 +190,7 @@ class TestHealthChecks:
 
     @pytest.mark.asyncio
     async def test_brain_folder_missing_fails_startup(
-        self, mock_llm, mock_khoj, mock_slack_app
+        self, mock_llm, mock_search, mock_slack_app
     ):
         """
         Test that missing brain folder fails startup.
@@ -200,31 +204,32 @@ class TestHealthChecks:
 
         Args:
             mock_llm: Mock LLM client
-            mock_khoj: Mock Khoj client
+            mock_search: Mock search client
             mock_slack_app: Mock Slack app
         """
         # Use a non-existent path
         config = {
             "brain_path": "/nonexistent/path/that/does/not/exist",
             "ollama_url": "http://m1-mini.local:11434",
-            "khoj_url": "http://nuc-1.local:42110",
+            "search_url": "http://nuc-1.local:9514",
             "model": "llama3.2",
         }
 
-        with patch.dict(
-            "os.environ",
-            {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
+        with patch(
+            "agents.slack_agent.get_secret",
+            side_effect=lambda k, **kw: {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"}.get(k),
         ):
             with (
-                patch("clients.llm_client.OllamaClient") as mock_llm_class,
-                patch("clients.semantic_search_client.SemanticSearchClient") as mock_search_class,
-                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
-                patch("clients.brain_io.BrainIO") as mock_brain_class,
-                patch("clients.conversation_manager.ConversationManager"),
-                patch("clients.cxdb_client.CxdbClient"),
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.SemanticSearchClient") as mock_search_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("agents.slack_agent.BrainIO") as mock_brain_class,
+                patch("agent_platform.BrainIO"),
+                patch("agents.slack_agent.ConversationManager"),
+                patch("agents.slack_agent.CxdbClient"),
             ):
                 mock_llm_class.return_value = mock_llm
-                mock_search_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_search
                 mock_app_class.return_value = mock_slack_app
                 # Make BrainIO raise ValueError for missing path
                 mock_brain_class.side_effect = ValueError("Brain folder not found")
@@ -235,7 +240,7 @@ class TestHealthChecks:
 
     @pytest.mark.asyncio
     async def test_slack_auth_failure_blocks_startup(
-        self, test_brain_path, mock_llm, mock_khoj
+        self, test_brain_path, mock_llm, mock_search
     ):
         """
         Test that Slack authentication failure blocks startup.
@@ -250,12 +255,12 @@ class TestHealthChecks:
         Args:
             test_brain_path: Fixture providing temporary brain directory
             mock_llm: Mock LLM client
-            mock_khoj: Mock Khoj client
+            mock_search: Mock search client
         """
         config = {
             "brain_path": str(test_brain_path),
             "ollama_url": "http://m1-mini.local:11434",
-            "khoj_url": "http://nuc-1.local:42110",
+            "search_url": "http://nuc-1.local:9514",
             "model": "llama3.2",
         }
 
@@ -267,20 +272,21 @@ class TestHealthChecks:
             )
         )
 
-        with patch.dict(
-            "os.environ",
-            {"SLACK_BOT_TOKEN": "xoxb-invalid", "SLACK_APP_TOKEN": "xapp-invalid"},
+        with patch(
+            "agents.slack_agent.get_secret",
+            side_effect=lambda k, **kw: {"SLACK_BOT_TOKEN": "xoxb-invalid", "SLACK_APP_TOKEN": "xapp-invalid"}.get(k),
         ):
             with (
-                patch("clients.llm_client.OllamaClient") as mock_llm_class,
-                patch("clients.semantic_search_client.SemanticSearchClient") as mock_search_class,
-                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
-                patch("clients.brain_io.BrainIO"),
-                patch("clients.conversation_manager.ConversationManager"),
-                patch("clients.cxdb_client.CxdbClient"),
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.SemanticSearchClient") as mock_search_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("agents.slack_agent.BrainIO"),
+                patch("agent_platform.BrainIO"),
+                patch("agents.slack_agent.ConversationManager"),
+                patch("agents.slack_agent.CxdbClient"),
             ):
                 mock_llm_class.return_value = mock_llm
-                mock_search_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_search
                 mock_app_class.return_value = mock_slack_app
 
                 agent = SlackAgent(config)
@@ -310,35 +316,36 @@ class TestHealthCheckEdgeCases:
         config = {
             "brain_path": str(test_brain_path),
             "ollama_url": "http://m1-mini.local:11434",
-            "khoj_url": "http://nuc-1.local:42110",
+            "search_url": "http://nuc-1.local:9514",
             "model": "llama3.2",
         }
 
-        # Khoj fails but it's non-critical
-        mock_khoj = AsyncMock()
-        mock_khoj.health_check = AsyncMock(
-            side_effect=Exception("Khoj connection failed")
+        # Search fails but it's non-critical
+        mock_search = AsyncMock()
+        mock_search.health_check = AsyncMock(
+            side_effect=Exception("Search connection failed")
         )
 
-        with patch.dict(
-            "os.environ",
-            {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
+        with patch(
+            "agents.slack_agent.get_secret",
+            side_effect=lambda k, **kw: {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"}.get(k),
         ):
             with (
-                patch("clients.llm_client.OllamaClient") as mock_llm_class,
-                patch("clients.semantic_search_client.SemanticSearchClient") as mock_search_class,
-                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
-                patch("clients.brain_io.BrainIO"),
-                patch("clients.conversation_manager.ConversationManager"),
-                patch("clients.cxdb_client.CxdbClient"),
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.SemanticSearchClient") as mock_search_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("agents.slack_agent.BrainIO"),
+                patch("agent_platform.BrainIO"),
+                patch("agents.slack_agent.ConversationManager"),
+                patch("agents.slack_agent.CxdbClient"),
             ):
                 mock_llm_class.return_value = mock_llm
-                mock_search_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_search
                 mock_app_class.return_value = mock_slack_app
 
                 agent = SlackAgent(config)
 
-                # Should still succeed even with Khoj failure
+                # Should still succeed even with search failure
                 try:
                     await agent._health_check()
                 except RuntimeError as e:
@@ -347,7 +354,7 @@ class TestHealthCheckEdgeCases:
 
     @pytest.mark.asyncio
     async def test_health_check_with_missing_config(
-        self, test_brain_path, mock_llm, mock_khoj, mock_slack_app
+        self, test_brain_path, mock_llm, mock_search, mock_slack_app
     ):
         """
         Test health check with missing configuration values.
@@ -362,20 +369,21 @@ class TestHealthCheckEdgeCases:
             "brain_path": str(test_brain_path),
         }
 
-        with patch.dict(
-            "os.environ",
-            {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
+        with patch(
+            "agents.slack_agent.get_secret",
+            side_effect=lambda k, **kw: {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"}.get(k),
         ):
             with (
-                patch("clients.llm_client.OllamaClient") as mock_llm_class,
-                patch("clients.semantic_search_client.SemanticSearchClient") as mock_search_class,
-                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
-                patch("clients.brain_io.BrainIO"),
-                patch("clients.conversation_manager.ConversationManager"),
-                patch("clients.cxdb_client.CxdbClient"),
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.SemanticSearchClient") as mock_search_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("agents.slack_agent.BrainIO"),
+                patch("agent_platform.BrainIO"),
+                patch("agents.slack_agent.ConversationManager"),
+                patch("agents.slack_agent.CxdbClient"),
             ):
                 mock_llm_class.return_value = mock_llm
-                mock_search_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_search
                 mock_app_class.return_value = mock_slack_app
 
                 agent = SlackAgent(config)
@@ -398,7 +406,7 @@ class TestHealthCheckRecovery:
         config = {
             "brain_path": str(test_brain_path),
             "ollama_url": "http://m1-mini.local:11434",
-            "khoj_url": "http://nuc-1.local:42110",
+            "search_url": "http://nuc-1.local:9514",
             "model": "llama3.2",
         }
 
@@ -410,23 +418,24 @@ class TestHealthCheckRecovery:
             None,  # Success on retry
         ]
 
-        mock_khoj = AsyncMock()
-        mock_khoj.health_check = AsyncMock(return_value=None)
+        mock_search = AsyncMock()
+        mock_search.health_check = AsyncMock(return_value=None)
 
-        with patch.dict(
-            "os.environ",
-            {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"},
+        with patch(
+            "agents.slack_agent.get_secret",
+            side_effect=lambda k, **kw: {"SLACK_BOT_TOKEN": "xoxb-test", "SLACK_APP_TOKEN": "xapp-test"}.get(k),
         ):
             with (
-                patch("clients.llm_client.OllamaClient") as mock_llm_class,
-                patch("clients.semantic_search_client.SemanticSearchClient") as mock_search_class,
-                patch("slack_bolt.async_app.AsyncApp") as mock_app_class,
-                patch("clients.brain_io.BrainIO"),
-                patch("clients.conversation_manager.ConversationManager"),
-                patch("clients.cxdb_client.CxdbClient"),
+                patch("agents.slack_agent.OllamaClient") as mock_llm_class,
+                patch("agents.slack_agent.SemanticSearchClient") as mock_search_class,
+                patch("agents.slack_agent.AsyncApp") as mock_app_class,
+                patch("agents.slack_agent.BrainIO"),
+                patch("agent_platform.BrainIO"),
+                patch("agents.slack_agent.ConversationManager"),
+                patch("agents.slack_agent.CxdbClient"),
             ):
                 mock_llm_class.return_value = mock_llm
-                mock_search_class.return_value = mock_khoj
+                mock_search_class.return_value = mock_search
                 mock_app_class.return_value = mock_slack_app
 
                 agent = SlackAgent(config)

@@ -6,7 +6,9 @@ services:
     container_name: brain_semantic_search
     restart: unless-stopped
     ports:
-      - "42110:42110"
+      - "9514:9514"
+    extra_hosts:
+      - "m1-mini.local:192.168.1.58"
     environment:
       - OLLAMA_URL=http://m1-mini.local:11434
       - EMBEDDING_MODEL=nomic-embed-text
@@ -19,7 +21,7 @@ services:
       - /home/earchibald/brain:/app/brain:ro
       - ./chroma_data:/app/chroma_data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:42110/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:9514/api/health"]
       interval: 1m
       timeout: 10s
       retries: 3

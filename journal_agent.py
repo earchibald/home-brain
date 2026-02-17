@@ -33,7 +33,7 @@ class JournalAgent(Agent):
 
         try:
             # Get recent brain activity for context
-            activity = await self.khoj.get_recent_activity(hours=24, folder="brain")
+            activity = await self.search.get_recent_activity(hours=24, folder="brain")
 
             # Generate AI prompts and focus recommendations
             prompts = await self._generate_prompts(activity)

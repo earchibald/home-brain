@@ -1,7 +1,5 @@
 """
 Semantic Search Client - Query the ChromaDB-based semantic search service.
-
-Drop-in replacement for KhojClient with API compatibility.
 """
 
 import httpx
@@ -47,7 +45,7 @@ class DocumentListPage:
 class SemanticSearchClient:
     """Async client for ChromaDB semantic search service."""
 
-    def __init__(self, base_url: str = "http://nuc-1.local:42110", timeout: int = 30):
+    def __init__(self, base_url: str = "http://nuc-1.local:9514", timeout: int = 30):
         """Initialize the client.
         
         Args:
@@ -339,6 +337,55 @@ class SemanticSearchClient:
             logger.error(f"Failed to delete document {file_path}: {e}")
             return False
 
+    async def upload_document(
+        self,
+        file_path: str,
+        content: bytes,
+        filename: str,
+        overwrite: bool = False,
+    ) -> Dict[str, Any]:
+        """Upload a file to the brain index.
+
+        Args:
+            file_path: Target path relative to brain root (e.g., 'notes/meeting.md')
+            content: File content as bytes
+            filename: Original filename (for multipart form)
+            overwrite: If True, overwrite existing file
+
+        Returns:
+            Dict with status, path, size, chunks, indexed
+            Empty dict on failure
+
+        Raises:
+            None - returns empty dict on all errors, logs details
+        """
+        await self._ensure_client()
+
+        try:
+            url = f"{self.base_url}/api/documents/upload"
+            
+            # Use multipart form data
+            files = {"file": (filename, content)}
+            data = {"file_path": file_path, "overwrite": str(overwrite).lower()}
+            
+            response = await self.client.post(url, files=files, data=data)
+            response.raise_for_status()
+            result = response.json()
+            logger.info(f"Uploaded document: {file_path} ({result.get('size', 0)} bytes, {result.get('chunks', 0)} chunks)")
+            return result
+
+        except httpx.HTTPStatusError as e:
+            error_detail = e.response.text
+            try:
+                error_detail = e.response.json().get("detail", error_detail)
+            except Exception:
+                pass
+            logger.error(f"Failed to upload document {file_path}: {e.response.status_code} {error_detail}")
+            return {"error": error_detail, "status_code": e.response.status_code}
+        except Exception as e:
+            logger.error(f"Failed to upload document {file_path}: {e}")
+            return {"error": str(e)}
+
     async def get_gates(self) -> Dict[str, str]:
         """Get current directory gate configuration.
 
@@ -425,6 +472,3 @@ class SemanticSearchClient:
             await self.client.aclose()
             self.client = None
 
-
-# Alias for backward compatibility with KhojClient
-KhojClient = SemanticSearchClient
