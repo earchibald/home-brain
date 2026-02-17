@@ -165,7 +165,49 @@
     </ul>
     <p>Use <code>/model</code> to switch instantly. <strong>Your choice is saved automatically</strong> and will be remembered even after the bot restarts. Each user can have their own preferred model.</p>
 
-    <h2>5. Maintenance & Troubleshooting</h2>
+    <h2>5. Slack Assistant Framework (New!)</h2>
+
+    <p><strong>💡 NEW FEATURE (Feb 17, 2026):</strong> The bot now integrates with Slack's native <strong>Assistant Framework</strong>, providing a cleaner, more native split-view experience.</p>
+
+    <h3>What Changed?</h3>
+    <ul>
+        <li><strong>Split-View UI:</strong> Open the assistant panel in Slack for a dedicated conversation view (no more mixed with DMs).</li>
+        <li><strong>Smart Status Indicator:</strong> Instead of a visible "Working..." message, you'll see a native "• thinking..." indicator that clears automatically.</li>
+        <li><strong>Suggested Prompts:</strong> When you start a new conversation, the assistant offers quick-start prompts (e.g., "Summarize Context", "Search Knowledge").</li>
+        <li><strong>Auto-Generated Titles:</strong> Each conversation is automatically titled based on your first message for easy reference.</li>
+        <li><strong>Context Awareness:</strong> The bot knows which channel you're currently viewing and can reference it in answers.</li>
+    </ul>
+
+    <h3>How to Use</h3>
+    <ol>
+        <li><strong>Open the Assistant:</strong> In Slack, go to <strong>Apps</strong> → <strong>Brain Assistant</strong> and click <strong>"Open in Assistant"</strong> (or the button icon).</li>
+        <li><strong>Start a Conversation:</strong> Type your first message. The assistant will:
+            <ul>
+                <li>Display suggested prompts you can click</li>
+                <li>Show a "thinking..." status while generating (no visible placeholder message)</li>
+                <li>Auto-title the thread based on your message</li>
+            </ul>
+        </li>
+        <li><strong>Switch Channels:</strong> As you browse different channels in Slack, the assistant knows which one you're looking at and can reference it automatically.</li>
+        <li><strong>Continue Conversation:</strong> All slash commands (<code>/model</code>, <code>/facts</code>, etc.) work exactly as before.</li>
+    </ol>
+
+    <h3>Why This Matters</h3>
+    <div class="callout">
+        <strong>Better UX:</strong> Conversations now feel native to Slack, not like you're fighting with message threading. Each thread is self-contained and titled.
+    </div>
+    <p><strong>No Breaking Changes:</strong> If you prefer the old DM flow, it still works. The bot detects whether you're in the Assistant view or a regular DM and adapts automatically.</p>
+
+    <h3>Under the Hood</h3>
+    <p>This feature uses three Slack APIs:</p>
+    <ul>
+        <li><code>assistant_threads.setStatus</code> — Manages the "thinking..." indicator</li>
+        <li><code>assistant_threads.setTitle</code> — Auto-titles conversations</li>
+        <li><code>assistant_threads.setSuggestedPrompts</code> — Offers quick-start suggestions</li>
+    </ul>
+    <p>All context (channel focus, message history) is persisted in NUC-2, ensuring perfect continuity across restarts.</p>
+
+    <h2>6. Maintenance & Troubleshooting</h2>
 
     <h3>Health Checks</h3>
     <p>If the bot stops responding:</p>
@@ -179,7 +221,7 @@
     <p><strong>Never</strong> send API keys in chat. Use the <code>/apikey</code> command, which opens a secure modal form. Keys are stored encrypted in Vaultwarden (NUC-1).</p>
 
     <footer style="margin-top: 4rem; padding-top: 2rem; border-top: 1px solid #eee; color: #666; font-size: 0.9rem;">
-        Generated on February 17, 2026 for the Brain Assistant Project.
+        Updated February 17, 2026 — Added Slack Assistant Framework support.
     </footer>
 
 </body>

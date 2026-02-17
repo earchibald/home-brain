@@ -2,13 +2,19 @@
 
 Get your semantic brain connected to Slack in 30 minutes.
 
+> **🎉 NEW (Feb 17, 2026):** The bot now supports **Slack's native Assistant Framework** with split-view UI, smart status indicators, and suggested prompts! See **Step 5** for details.
+
 ## What You'll Build
 
 A Slack bot that:
-- **Responds to Slack DMs** using llama3.2 or Gemini (your choice)
+- **Responds in DMs OR Slack's native Assistant view** (your choice!)
+- **Uses llama3.2 or Gemini** for inference (your preference persists)
 - **Searches your brain** for relevant context before answering
 - **Remembers conversations** with automatic history management
-- **Remembers your model preference** - selections persist across restarts
+- **Knows your channel context** (bot is aware of what you're viewing)
+- **Displays smart "thinking..." status** (native Slack indicator, no placeholder messages)
+- **Offers suggested prompts** to kickstart conversations
+- **Auto-titles threads** based on your first message
 - **Isolates users** - each person gets their own brain folder
 - **Runs 24/7** as a systemd service on NUC-2
 
@@ -199,15 +205,38 @@ Press `Ctrl+C` to exit logs.
 
 ### 5.2 Send Hello World
 
+You have **two ways** to chat with the bot:
+
+#### Option A: Classic DM Flow
 Type in the DM:
 ```
 Hello!
 ```
 
 **Expected behavior:**
-- Bot shows typing indicator
+- Bot shows a "working..." indicator
 - After 5-15 seconds, bot responds with AI-generated message
 - Response is personalized and conversational
+
+#### Option B: NEW - Slack Assistant Framework (Recommended!)
+1. In the **Apps** sidebar, click the **Brain Assistant** app icon
+2. Look for an **"Open in Assistant"** button or link (or the assistant icon)
+3. This opens the bot in Slack's native **Assistant view** with:
+   - ✨ Split-view dedicated conversation panel
+   - 💭 Native "• thinking..." status (no visible "working..." message)
+   - 💡 Quick-start suggested prompts
+   - 🎯 Auto-generated conversation titles
+   - 📍 Context awareness (bot knows which channel you're viewing)
+
+**Expected behavior in Assistant view:**
+- Bot shows only native "thinking..." indicator
+- Suggested prompts appear instantly (you can click them!)
+- After 5-15 seconds, response appears with auto-generated thread title
+- Conversation feels native to Slack (not like message threading)
+
+**Which should I use?**
+- 🏆 **Recommended:** Assistant view (cleaner, more native, better UX)
+- ✅ **Still works:** Classic DM flow (familiar if you've been using it)
 
 ### 5.3 Test Multi-Turn Conversation
 
