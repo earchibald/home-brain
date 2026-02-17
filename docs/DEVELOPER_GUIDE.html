@@ -77,8 +77,8 @@
     </ul>
     <p><strong>For Developers:</strong> NUC-3 failure affects backups, not live operations. NUC-1 and NUC-2 can run independently.</p>
 
-    <h3>💻 Mac Mini: Inference Engine</h3>
-    <p><strong>Role:</strong> Local LLM inference for privacy and speed.</p>
+    <h3>💻 Mac Mini: Primary Inference Engine</h3>
+    <p><strong>Role:</strong> Primary local LLM inference for privacy and speed.</p>
     <ul>
         <li><strong>Ollama Service:</strong> Runs LLM models locally at <code>http://m1-mini.local:11434</code>.</li>
         <li><strong>Models Loaded:</strong>
@@ -91,6 +91,21 @@
         <li><strong>Environment:</strong> <code>OLLAMA_HOST=0.0.0.0</code> enables network access from NUCs.</li>
     </ul>
     <p><strong>For Developers:</strong> If inference is slow, check Mac Mini CPU load. Ollama will queue requests if overloaded.</p>
+
+    <h3>💻 M4 Pro Laptop: Auxiliary Inference (High-Speed)</h3>
+    <p><strong>Role:</strong> Auxiliary LLM inference provider for faster responses when needed.</p>
+    <ul>
+        <li><strong>Hardware:</strong> M4 Pro chip with superior performance for quick inference.</li>
+        <li><strong>Ollama Service:</strong> Runs at <code>http://[m4-laptop-hostname]:11434</code> (when connected).</li>
+        <li><strong>Models Loaded:</strong>
+            <ul>
+                <li><code>llama3.1:8b</code> (Active) - Faster inference on M4 Pro hardware.</li>
+            </ul>
+        </li>
+        <li><strong>Use Case:</strong> When latency is critical or Mac Mini is under heavy load.</li>
+        <li><strong>Availability:</strong> Mobile/intermittent (only when laptop is on network and Ollama running).</li>
+    </ul>
+    <p><strong>For Developers:</strong> Configure the bot to fall back to Mac Mini if M4 Pro is unavailable. Consider load balancing between both providers.</p>
 
     <h3>The Request Flow (How Every Message Gets Processed)</h3>
     <p>Understanding the complete request lifecycle is critical for debugging and extending the agent.</p>
@@ -118,20 +133,22 @@
     
     <h3>Network Topology</h3>
     <ul>
-        <li>All NUCs and Mac Mini are on the same local network (192.168.x.x).</li>
-        <li>Service discovery via mDNS: <code>nuc-1.local</code>, <code>nuc-2.local</code>, <code>nuc-3.local</code>, <code>m1-mini.local</code>.</li>
+        <li>All NUCs, Mac Mini, and M4 Pro (when connected) are on the same local network (192.168.x.x).</li>
+        <li>Service discovery via mDNS: <code>nuc-1.local</code>, <code>nuc-2.local</code>, <code>nuc-3.local</code>, <code>m1-mini.local</code>, and M4 Pro hostname.</li>
         <li>SSH passwordless access configured for <code>earchibald@</code> user on all hosts.</li>
         <li>Syncthing mesh keeps all three NUCs in continuous sync.</li>
+        <li>M4 Pro provides auxiliary inference when available on network.</li>
     </ul>
 
     <h3>Service Dependencies</h3>
     <p>Before extending the system, understand the dependency chain:</p>
     <pre><code>SlackAgent (NUC-2)
-    ├─ Ollama (Mac Mini) - For inference
+    ├─ Ollama (Mac Mini) - Primary inference
+    ├─ Ollama (M4 Pro) - Auxiliary inference (optional)
     ├─ ChromaDB (NUC-1) - For semantic search
     ├─ Vaultwarden (NUC-1) - For secrets
     └─ Syncthing (All) - For file sync</code></pre>
-    <p>If any dependency is down, the bot degrades gracefully (falls back to chat-only mode).</p>
+    <p>If any dependency is down, the bot degrades gracefully (falls back to chat-only mode). M4 Pro is optional and improves performance when available.</p>
 
     <h2>3. Development Workflow ("The Flow")</h2>
     <div class="callout">
