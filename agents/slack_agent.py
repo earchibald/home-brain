@@ -809,10 +809,25 @@ IMPORTANT: Only claim you performed an action if the [Actions taken] note in con
                 # Refresh provider discovery with configured Ollama URL
                 self.model_manager.discover_available_sources(ollama_url=self.ollama_url)
 
+                # Load user's saved model preference into manager BEFORE building UI
+                saved_pref = self.model_pref_store.get_preference(user_id)
+                if saved_pref:
+                    try:
+                        self.model_manager.set_model(
+                            saved_pref["provider_id"],
+                            saved_pref["model_name"]
+                        )
+                        self.logger.debug(
+                            f"Loaded saved preference for user {user_id}: "
+                            f"{saved_pref['provider_id']} / {saved_pref['model_name']}"
+                        )
+                    except Exception as e:
+                        self.logger.warning(f"Failed to restore saved preference: {e}")
+
                 # Load user's Gemini API key into provider
                 gemini_configured = _load_user_gemini_key(self, user_id)
 
-                # Build UI (no provider pre-selected on initial load)
+                # Build UI (will now show user's saved selection if it exists)
                 blocks = build_model_selector_ui(
                     self.model_manager,
                     gemini_configured=gemini_configured,
